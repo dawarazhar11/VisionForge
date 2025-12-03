@@ -1,0 +1,41 @@
+# Use Python 3.11 slim image for smaller footprint
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    C_FORCE_ROOT=true
+
+# Install system dependencies for PostgreSQL, Blender rendering, and ML tasks
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    postgresql-client \
+    libpq-dev \
+    # Future dependencies for Blender/ML tasks
+    # libgl1-mesa-glx \
+    # libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better layer caching
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Create directories for worker tasks
+RUN mkdir -p /app/uploads /app/datasets /app/models
+
+# Health check for Celery (checks if worker is processing tasks)
+HEALTHCHECK --interval=60s --timeout=30s --start-period=10s --retries=3 \
+    CMD celery -A app.celery_app inspect ping -d celery@$HOSTNAME || exit 1
+
+# Run Celery worker
+CMD ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--concurrency=2"]

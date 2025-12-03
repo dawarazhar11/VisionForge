@@ -1,0 +1,152 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    container_name: yolo_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-yolo_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-yolo_password}
+      POSTGRES_DB: ${POSTGRES_DB:-yolo_vision_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-yolo_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - yolo_network
+
+  # Redis for Celery message broker
+  redis:
+    image: redis:7-alpine
+    container_name: yolo_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - yolo_network
+
+  # FastAPI application
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: yolo_api
+    environment:
+      # Database
+      POSTGRES_SERVER: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-yolo_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-yolo_password}
+      POSTGRES_DB: ${POSTGRES_DB:-yolo_vision_db}
+
+      # Redis/Celery
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+
+      # Application
+      SECRET_KEY: ${SECRET_KEY:-your-super-secret-key-change-in-production}
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      REFRESH_TOKEN_EXPIRE_DAYS: 7
+      DEBUG: ${DEBUG:-False}
+
+      # CORS
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000","http://localhost:8080"]}
+    volumes:
+      - ./uploads:/app/uploads
+      - ./datasets:/app/datasets
+      - ./models:/app/models
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - yolo_network
+    restart: unless-stopped
+
+  # Celery worker for background tasks
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.celery
+    container_name: yolo_celery_worker
+    environment:
+      # Database
+      POSTGRES_SERVER: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-yolo_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-yolo_password}
+      POSTGRES_DB: ${POSTGRES_DB:-yolo_vision_db}
+
+      # Redis/Celery
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+
+      # Application
+      SECRET_KEY: ${SECRET_KEY:-your-super-secret-key-change-in-production}
+      C_FORCE_ROOT: "true"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./datasets:/app/datasets
+      - ./models:/app/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - yolo_network
+    restart: unless-stopped
+
+  # Optional: Flower for Celery monitoring (development only)
+  flower:
+    image: mher/flower:2.0
+    container_name: yolo_flower
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      FLOWER_PORT: 5555
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+      - celery_worker
+    networks:
+      - yolo_network
+    profiles:
+      - dev  # Only run in dev profile: docker-compose --profile dev up
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  yolo_network:
+    driver: bridge
