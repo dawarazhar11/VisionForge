@@ -9,6 +9,7 @@ from app.schemas.project import (
     ProjectResponse,
     ProjectListResponse,
 )
+from app.schemas.job import JobCreate, JobResponse, JobListResponse
 
 __all__ = [
     "UserCreate",
@@ -23,4 +24,7 @@ __all__ = [
     "ProjectUpdate",
     "ProjectResponse",
     "ProjectListResponse",
+    "JobCreate",
+    "JobResponse",
+    "JobListResponse",
 ]
