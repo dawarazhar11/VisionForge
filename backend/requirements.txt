@@ -15,6 +15,8 @@ redis==7.1.0
 # Authentication
 python-jose[cryptography]==3.5.0
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+email-validator==2.3.0
 
 # Configuration & utilities
 pydantic-settings==2.12.0

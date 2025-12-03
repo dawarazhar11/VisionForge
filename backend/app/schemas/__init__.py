@@ -1,1 +1,16 @@
-# Pydantic schemas (will be added in Week 1 Day 5-7)
+"""
+Pydantic schemas for request/response validation.
+"""
+from app.schemas.user import UserCreate, UserUpdate, UserResponse, UserInDB
+from app.schemas.auth import Token, TokenData, UserLogin, RefreshTokenRequest
+
+__all__ = [
+    "UserCreate",
+    "UserUpdate",
+    "UserResponse",
+    "UserInDB",
+    "Token",
+    "TokenData",
+    "UserLogin",
+    "RefreshTokenRequest",
+]
