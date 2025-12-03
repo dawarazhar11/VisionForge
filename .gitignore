@@ -27,8 +27,7 @@ ENV/
 # Backend
 backend/.env
 backend/storage/
-backend/alembic/versions/*.py
-!backend/alembic/versions/__init__.py
+backend/alembic/versions/__pycache__/
 
 # Flutter
 yolo_assembly_app/.dart_tool/
