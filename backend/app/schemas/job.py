@@ -13,6 +13,28 @@ class JobCreate(BaseModel):
     job_type: str = Field(..., description="Type of job (test, render, train)")
     config: Optional[Dict[str, Any]] = Field(None, description="Job configuration")
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "project_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                    "job_type": "test",
+                    "config": {"message": "Testing Celery integration"}
+                },
+                {
+                    "project_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                    "job_type": "render",
+                    "config": {"num_images": 100, "resolution": "1920x1080"}
+                },
+                {
+                    "project_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                    "job_type": "train",
+                    "config": {"epochs": 50, "batch_size": 16, "model": "yolov8n"}
+                }
+            ]
+        }
+    }
+
 
 class JobResponse(BaseModel):
     """Schema for job response."""

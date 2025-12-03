@@ -23,6 +23,15 @@ class ProjectUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "name": "Updated Assembly Project",
+                "description": "Modified description for mechanical component assembly"
+            }
+        }
+    }
+
 
 class ProjectResponse(ProjectBase):
     """Schema for project response."""

@@ -24,6 +24,72 @@ app = FastAPI(
     debug=settings.DEBUG,
     docs_url="/docs",
     redoc_url="/redoc",
+    description="""
+## YOLO Assembly Vision API
+
+Complete backend API for synthetic data generation, YOLO model training, and computer vision workflows.
+
+### Features
+
+* **User Authentication**: JWT-based authentication with access and refresh tokens
+* **Project Management**: Upload and manage 3D assembly files (.blend, .obj, .stl, .fbx)
+* **Async Job Queue**: Celery-powered background tasks for rendering and training
+* **Real-time Progress**: Track job status and progress for long-running tasks
+
+### Authentication Flow
+
+1. **Register**: Create a new user account with email and password (`POST /api/v1/auth/register`)
+2. **Login**: Get JWT access token and refresh token (`POST /api/v1/auth/login`)
+3. **Access Protected Endpoints**: Include `Authorization: Bearer <access_token>` header in requests
+4. **Refresh Token**: Get new access token when expired (`POST /api/v1/auth/refresh`)
+
+### Quick Start
+
+```python
+# 1. Register a new user
+POST /api/v1/auth/register
+{
+    "email": "user@example.com",
+    "password": "securepassword123",
+    "full_name": "John Doe"
+}
+
+# 2. Login to get tokens
+POST /api/v1/auth/login
+{
+    "username": "user@example.com",
+    "password": "securepassword123"
+}
+# Returns: {"access_token": "eyJ...", "refresh_token": "eyJ...", "token_type": "bearer"}
+
+# 3. Upload a project (with Authorization header)
+POST /api/v1/projects/upload
+Headers: Authorization: Bearer eyJ...
+Form Data: file=@model.blend, name="My Project"
+
+# 4. Create a rendering job
+POST /api/v1/jobs/
+Headers: Authorization: Bearer eyJ...
+{
+    "project_id": "uuid-here",
+    "job_type": "render",
+    "config": {"num_images": 100}
+}
+```
+
+### Job Types
+
+* **test**: Echo task for testing Celery integration
+* **render**: Generate synthetic training data with Blender
+* **train**: Train YOLO model on generated dataset
+    """,
+    contact={
+        "name": "YOLO Assembly Vision Team",
+        "email": "support@yolo-vision.example.com",
+    },
+    license_info={
+        "name": "MIT License",
+    },
 )
 
 # Configure CORS

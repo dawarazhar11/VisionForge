@@ -17,6 +17,16 @@ class UserCreate(UserBase):
     """Schema for user registration."""
     password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "email": "engineer@yolovision.com",
+                "password": "SecurePass123!",
+                "full_name": "Jane Engineer"
+            }
+        }
+    )
+
 
 class UserUpdate(BaseModel):
     """Schema for updating user profile."""
