@@ -1,0 +1,38 @@
+# Claude Memory Bank System - Never commit these files
+CLAUDE.md
+CLAUDE-*.md
+
+# Large Blender files
+*.blend
+*.blend1
+
+# Generated data directories
+desk_renders/
+reports/
+
+# Python virtual environments and packages
+blender_venv/
+blender_packages/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+.venv/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

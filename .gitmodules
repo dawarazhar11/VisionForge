@@ -1,0 +1,3 @@
+[submodule "yolo-ios-app"]
+	path = yolo-ios-app
+	url = git@gitlab.com:orientation1551015/yolo-ios-app.git
