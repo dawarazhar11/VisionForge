@@ -77,14 +77,14 @@ async def health_check():
 
 
 # Import routers
-from app.api import auth
+from app.api import auth, projects
 
 # Include routers
 app.include_router(auth.router, prefix=f"{settings.API_PREFIX}/auth", tags=["authentication"])
+app.include_router(projects.router, prefix=f"{settings.API_PREFIX}/projects", tags=["projects"])
 
 # Future routers (will be added in later phases)
-# from app.api import projects, jobs, models
-# app.include_router(projects.router, prefix=f"{settings.API_PREFIX}/projects", tags=["projects"])
+# from app.api import jobs, models
 # app.include_router(jobs.router, prefix=f"{settings.API_PREFIX}/jobs", tags=["jobs"])
 # app.include_router(models.router, prefix=f"{settings.API_PREFIX}/models", tags=["models"])
 
