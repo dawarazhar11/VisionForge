@@ -13,6 +13,7 @@ reports/
 # Python virtual environments and packages
 blender_venv/
 blender_packages/
+backend_venv/
 __pycache__/
 *.pyc
 *.pyo
@@ -22,6 +23,21 @@ env/
 venv/
 ENV/
 .venv/
+
+# Backend
+backend/.env
+backend/storage/
+backend/alembic/versions/*.py
+!backend/alembic/versions/__init__.py
+
+# Flutter
+yolo_assembly_app/.dart_tool/
+yolo_assembly_app/.packages
+yolo_assembly_app/build/
+yolo_assembly_app/.flutter-plugins
+yolo_assembly_app/.flutter-plugins-dependencies
+yolo_assembly_app/*.iml
+yolo_assembly_app/.metadata
 
 # IDE and editor files
 .vscode/
