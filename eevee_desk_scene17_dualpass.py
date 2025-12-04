@@ -140,7 +140,11 @@ POLYGON_APPROX_EPS = 0.01
 def setup_optimized_eevee():
     """Configure EEVEE Next for fast, stable output (baseline settings)."""
     scene = bpy.context.scene
-    scene.render.engine = 'BLENDER_EEVEE_NEXT'
+    # Blender 5.0+ renamed EEVEE_NEXT to EEVEE (EEVEE Next is now the default/only EEVEE)
+    if bpy.app.version >= (5, 0, 0):
+        scene.render.engine = 'BLENDER_EEVEE'
+    else:
+        scene.render.engine = 'BLENDER_EEVEE_NEXT'
     eevee = scene.eevee
     try:
         eevee.taa_render_samples = EEVEE_SAMPLES
@@ -427,7 +431,17 @@ def rebuild_compositor_for_alpha_mask(mask_dir):
     scene.use_nodes = True
     scene.render.film_transparent = True  # background alpha 0, objects alpha 1
 
-    tree = scene.node_tree
+    # Blender 5.0+ changed compositor node tree access
+    if bpy.app.version >= (5, 0, 0):
+        # In Blender 5.0+, use the compositor property
+        if not hasattr(scene, 'compositor'):
+            print("WARNING: Compositor not available in Blender 5.0+, skipping mask setup")
+            return
+        tree = scene.compositor.node_tree
+    else:
+        # Blender 4.x and earlier
+        tree = scene.node_tree
+
     tree.links.clear()
     for n in list(tree.nodes):
         tree.nodes.remove(n)
@@ -453,7 +467,16 @@ def disconnect_output_files():
     scene = bpy.context.scene
     if not scene.use_nodes:
         return
-    tree = scene.node_tree
+
+    # Blender 5.0+ changed compositor node tree access
+    if bpy.app.version >= (5, 0, 0):
+        if not hasattr(scene, 'compositor'):
+            print("WARNING: Compositor not available in Blender 5.0+, skipping output disconnect")
+            return
+        tree = scene.compositor.node_tree
+    else:
+        tree = scene.node_tree
+
     to_remove = []
     for link in list(tree.links):
         if getattr(link.to_node, "type", "") == 'OUTPUT_FILE':

@@ -23,7 +23,13 @@ pydantic-settings==2.12.0
 python-dotenv==1.2.1
 loguru==0.7.3
 
-# ML libraries (will be used later)
-# ultralytics==8.0.0
-# torch==2.1.0
-# opencv-python==4.8.0
+# ML libraries for YOLO training
+ultralytics==8.3.234
+torch==2.9.1
+torchvision==0.24.1
+opencv-python==4.12.0.88
+PyYAML==6.0.3
+numpy==2.2.6
+scipy==1.16.3
+matplotlib==3.10.7
+pillow==12.0.0
