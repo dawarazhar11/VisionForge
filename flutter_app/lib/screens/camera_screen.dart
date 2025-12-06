@@ -70,9 +70,10 @@ class _CameraScreenState extends State<CameraScreen> {
         labels: _getMechanicalComponentLabels(),
       );
     } catch (e) {
-      setState(() {
-        _error = 'Failed to initialize YOLO: $e';
-      });
+      // Model not found - app will work in camera-only mode
+      print('YOLO model not loaded: $e');
+      print('App will run in camera-only mode. Add model to assets/models/ for detection.');
+      // Don't set error - just log it
     }
   }
 

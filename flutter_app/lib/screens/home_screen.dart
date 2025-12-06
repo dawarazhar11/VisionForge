@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'login_screen.dart';
-import 'camera_screen.dart';
+import 'detection_screen.dart';
+import 'projects_screen.dart';
+import 'models_screen.dart';
+import 'training_jobs_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -56,7 +60,7 @@ class HomeScreen extends StatelessWidget {
               ElevatedButton.icon(
                 onPressed: () {
                   Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const CameraScreen()),
+                    MaterialPageRoute(builder: (_) => const DetectionScreen()),
                   );
                 },
                 icon: const Icon(Icons.camera_alt, size: 28),
@@ -71,13 +75,23 @@ class HomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
 
-              // Models Button (placeholder for future)
+              // Projects Button
               OutlinedButton.icon(
                 onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Model management coming soon!'),
-                    ),
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ProjectsScreen()),
+                  );
+                },
+                icon: const Icon(Icons.folder),
+                label: const Text('My Projects'),
+              ),
+              const SizedBox(height: 16),
+
+              // Models Button
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ModelsScreen()),
                   );
                 },
                 icon: const Icon(Icons.storage),
@@ -85,13 +99,23 @@ class HomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
 
-              // Settings Button (placeholder for future)
+              // Training Jobs Button
               OutlinedButton.icon(
                 onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Settings coming soon!'),
-                    ),
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const TrainingJobsScreen()),
+                  );
+                },
+                icon: const Icon(Icons.model_training),
+                label: const Text('Training Jobs'),
+              ),
+              const SizedBox(height: 16),
+
+              // Settings Button
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
                   );
                 },
                 icon: const Icon(Icons.settings),

@@ -45,5 +45,13 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>This app requires camera access to perform real-time object detection with YOLO models.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs access to your photo library to select images for object detection and annotation.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>This app needs permission to save annotated images to your photo library.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Microphone access may be required for video recording features.</string>
 </dict>
 </plist>
