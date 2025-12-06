@@ -8,6 +8,7 @@ import sys
 
 from app.config import settings
 from app.database import init_db
+from app.middleware import RateLimitMiddleware, AuthRateLimitMiddleware
 
 # Configure loguru
 logger.remove()
@@ -101,6 +102,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Configure rate limiting (skip in test mode)
+import os
+if not os.getenv("TESTING"):
+    app.add_middleware(
+        RateLimitMiddleware,
+        requests_per_minute=60,
+        burst_size=10,
+        exclude_paths=["/health", "/docs", "/redoc", "/openapi.json", "/api/v1/monitoring"]
+    )
+
+    app.add_middleware(
+        AuthRateLimitMiddleware,
+        login_attempts_per_minute=5,
+        register_attempts_per_minute=3
+    )
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -108,12 +125,13 @@ async def startup_event():
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info(f"Debug mode: {settings.DEBUG}")
 
-    # Initialize database
-    try:
-        init_db()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error(f"Database initialization failed: {e}")
+    # Initialize database (skip in test mode - handled by fixtures)
+    if not os.getenv("TESTING"):
+        try:
+            init_db()
+            logger.info("Database initialized successfully")
+        except Exception as e:
+            logger.error(f"Database initialization failed: {e}")
 
 
 @app.on_event("shutdown")
@@ -143,16 +161,16 @@ async def health_check():
 
 
 # Import routers
-from app.api import auth, projects, jobs
+from app.api import auth, projects, jobs, datasets, models, monitoring, webhooks
 
 # Include routers
 app.include_router(auth.router, prefix=f"{settings.API_PREFIX}/auth", tags=["authentication"])
 app.include_router(projects.router, prefix=f"{settings.API_PREFIX}/projects", tags=["projects"])
 app.include_router(jobs.router, prefix=f"{settings.API_PREFIX}/jobs", tags=["jobs"])
-
-# Future routers (will be added in later phases)
-# from app.api import models
-# app.include_router(models.router, prefix=f"{settings.API_PREFIX}/models", tags=["models"])
+app.include_router(datasets.router, prefix=f"{settings.API_PREFIX}/datasets", tags=["datasets"])
+app.include_router(models.router, prefix=f"{settings.API_PREFIX}/models", tags=["models"])
+app.include_router(monitoring.router, prefix=f"{settings.API_PREFIX}/monitoring", tags=["monitoring"])
+app.include_router(webhooks.router, prefix=f"{settings.API_PREFIX}/webhooks", tags=["webhooks"])
 
 
 if __name__ == "__main__":

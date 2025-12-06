@@ -10,6 +10,90 @@
 
 This document outlines the technical architecture, design decisions, and rationale for the YOLO Assembly Vision platform.
 
+## 🎯 Multi-Platform Support Strategy
+
+### Supported Platforms
+
+This platform supports inference across multiple device types to accommodate different user workflows:
+
+#### 1. **iOS (Native Swift App)**
+- **Status:** ✅ Implemented (existing Swift package)
+- **Location:** `yolo-ios-app/` directory
+- **Model Format:** Core ML (.mlpackage)
+- **Performance:** Optimized for Apple Neural Engine
+- **Use Cases:**
+  - Real-time mobile inspection on construction sites
+  - Portable quality control in manufacturing
+  - Field service technician support
+
+#### 2. **Android (To Be Implemented)**
+- **Status:** 🚧 Planned
+- **Recommended Approach:** Flutter app with TFLite
+- **Model Format:** TensorFlow Lite (.tflite)
+- **Performance:** GPU acceleration via OpenGL/Vulkan
+- **Use Cases:**
+  - Budget-friendly mobile deployment
+  - Cross-platform device management
+  - Enterprise Android device fleets
+
+#### 3. **Windows PC with Webcam**
+- **Status:** 🚧 Planned
+- **Recommended Approach:**
+  - Option A: Desktop app (Electron/PyQt with ONNX Runtime)
+  - Option B: Web app accessed via browser (WebAssembly + ONNX.js)
+- **Model Format:** ONNX (.onnx) or PyTorch (.pt)
+- **Use Cases:**
+  - Desktop workstation integration
+  - High-resolution camera input (4K webcams)
+  - Multi-monitor inspection workflows
+  - Offline factory floor deployment
+
+#### 4. **Zed2i Stereo Camera (Advanced Features)**
+- **Status:** 💡 Future Enhancement
+- **Hardware:** Stereolabs ZED 2i depth camera
+- **Capabilities:**
+  - 3D object detection with depth information
+  - Real-time spatial measurements (object dimensions)
+  - Occlusion handling via depth maps
+  - Improved detection in complex scenes
+- **Use Cases:**
+  - Robotic pick-and-place guidance
+  - Autonomous inspection systems
+  - Dimensional quality control (measure screw spacing, bracket alignment)
+  - Safety distance monitoring
+
+### Platform Decision Matrix
+
+| Platform | Development Time | Maintenance Cost | Performance | Hardware Cost | Best For |
+|----------|-----------------|------------------|-------------|---------------|----------|
+| iOS (Swift) | Medium | Medium | Excellent | High ($500+) | Premium mobile, Apple ecosystem |
+| Android (Flutter) | Medium | Low | Good | Low ($150+) | Budget mobile, cross-platform |
+| Windows PC | Low-Medium | Low | Excellent | Medium ($200-500) | Desktop workflows, high-res cameras |
+| Zed2i Camera | High | High | Excellent | Very High ($450+) | Advanced robotics, 3D inspection |
+
+### Model Export Strategy
+
+To support all platforms, the training pipeline must export models in multiple formats:
+
+```python
+# Complete model export for multi-platform support
+from ultralytics import YOLO
+
+model = YOLO('best.pt')  # Trained PyTorch model
+
+# iOS - Core ML
+model.export(format='coreml', nms=True, imgsz=640)
+
+# Android - TensorFlow Lite
+model.export(format='tflite', int8=False, imgsz=640)  # FP16 quantization
+
+# Windows/Zed2i - ONNX
+model.export(format='onnx', imgsz=640, opset=12)
+
+# Fallback - PyTorch (for Python desktop apps)
+# Already available as best.pt
+```
+
 ---
 
 ## 📊 High-Level Architecture Diagram
@@ -189,30 +273,42 @@ def convert_model(self, model_id: int, target_format: str):
 
 ---
 
-### 4. **Why Flutter over React Native/Native?**
+### 4. **Mobile Platform Strategy: Native-First Approach**
 
-**Decision:** Use Flutter for cross-platform mobile app
+**Decision:** Native Swift for iOS (implemented), Flutter for Android (planned)
 
-**Rationale:**
-- ✅ **Single Codebase:** One codebase for iOS + Android (faster development)
-- ✅ **Performance:** Compiled to native ARM code (near-native speed)
-- ✅ **UI Consistency:** Pixel-perfect UI across platforms
-- ✅ **Hot Reload:** Fast iteration during development
-- ✅ **Growing Ecosystem:** Excellent packages for camera, ML, networking
+**Current Implementation - iOS (Swift):**
+- ✅ **Performance:** Maximum performance with Apple Neural Engine
+- ✅ **Native APIs:** Direct access to Core ML, AVFoundation, Metal
+- ✅ **App Store Optimization:** Smaller app size (~10MB vs ~25MB Flutter)
+- ✅ **Swift Package Manager:** Clean dependency management
+- ✅ **Zero Bridge Overhead:** Direct native code execution
+
+**Planned Implementation - Android (Flutter):**
+- ⏳ **Rationale for Flutter on Android:**
+  - Cross-platform codebase reusability (iOS Flutter could be added later)
+  - Excellent TFLite integration
+  - Fast development cycle with hot reload
+  - Growing ecosystem for camera and ML
+- ⏳ **Alternative:** Native Kotlin app (better performance, more dev time)
+
+**Why Not Single Flutter App?**
+
+We chose a hybrid approach (native iOS + Flutter Android) because:
+1. **iOS App Already Exists:** Swift implementation is complete and optimized
+2. **Performance Priority on iOS:** Core ML on Swift outperforms Flutter+CoreML
+3. **Gradual Migration Path:** Can port iOS to Flutter later if needed
+4. **Best of Both Worlds:** Native performance on iOS, rapid development on Android
 
 **Alternatives Considered:**
-- **Native iOS (Swift):** Best performance but iOS-only, doubles dev time
+- **Full Flutter Rewrite:** Would require rebuilding iOS app, losing Core ML optimizations
 - **React Native:** Larger ecosystem but bridge performance issues for ML
-- **Xamarin:** C# ecosystem, less popular, poorer ML support
+- **Native Everywhere:** Best performance but doubles dev time and maintenance
 
 **Trade-offs:**
-- Larger app size (~20MB base vs ~5MB native)
-- Slightly lower performance than pure native (negligible for this use case)
-
-**State Management Choice: Riverpod**
-- Modern, compile-safe alternative to Provider
-- Better testability than Bloc
-- Less boilerplate than Redux
+- Maintaining two codebases (Swift + Flutter/Kotlin)
+- Potential UI consistency differences between platforms
+- Shared backend API simplifies maintenance
 
 ---
 

@@ -62,6 +62,61 @@ A complete SaaS platform where users can upload 3D assembly files from their mob
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## 🎯 Multi-Platform Deployment Strategy
+
+### Platform Priorities
+
+The system supports multiple device types for flexible deployment:
+
+**Phase 1 (Current):** iOS Native App
+- ✅ Swift implementation complete (`yolo-ios-app/`)
+- ✅ Core ML model inference optimized for Neural Engine
+- ✅ Real-time camera detection with AVFoundation
+- **Status:** Production-ready
+
+**Phase 2 (Next):** Android Mobile App
+- 🚧 Flutter or native Kotlin implementation
+- 🚧 TensorFlow Lite model integration
+- 🚧 Camera2 API for camera access
+- **Timeline:** 6-8 weeks development
+- **Recommendation:** Start with Flutter for faster development
+
+**Phase 3 (Future):** Windows PC with Webcam
+- 💡 Desktop application (Electron/PyQt/Web)
+- 💡 ONNX Runtime or PyTorch inference
+- 💡 DirectShow/OpenCV for webcam access
+- **Timeline:** 4-6 weeks development
+- **Use Cases:** Fixed workstation inspection, high-resolution cameras
+
+**Phase 4 (Advanced):** Zed2i Stereo Camera Integration
+- 💡 ZED SDK integration for depth sensing
+- 💡 3D bounding boxes with spatial coordinates
+- 💡 Dimensional measurements (distance, volume)
+- 💡 Occlusion handling via depth maps
+- **Timeline:** 8-12 weeks development (requires specialized hardware)
+- **Use Cases:** Robotic guidance, precision QA, autonomous systems
+
+### Implementation Roadmap: Multi-Platform Support
+
+#### Android App Development (6-8 weeks)
+1. **Week 1-2:** Flutter project setup + UI design
+2. **Week 3-4:** TFLite model integration + camera pipeline
+3. **Week 5-6:** Real-time inference + bounding box overlay
+4. **Week 7-8:** Testing + Play Store deployment
+
+#### Windows Desktop App (4-6 weeks)
+1. **Week 1-2:** Technology selection (Electron vs PyQt vs Web)
+2. **Week 3-4:** ONNX model integration + webcam access
+3. **Week 5-6:** UI development + performance optimization
+
+#### Zed2i Camera Integration (8-12 weeks)
+1. **Week 1-3:** ZED SDK learning + depth data exploration
+2. **Week 4-6:** 3D detection algorithm development
+3. **Week 7-9:** Spatial measurement features
+4. **Week 10-12:** Robotic API integration + testing
+
+---
+
 ## 📅 Development Phases
 
 ### **Phase 1: Foundation & Backend Infrastructure** (Weeks 1-4)

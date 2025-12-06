@@ -3,8 +3,9 @@ Celery tasks for async job processing.
 """
 import os
 import time
+import asyncio
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 from celery import Task
 from loguru import logger
 from sqlalchemy.orm import Session
@@ -14,8 +15,10 @@ from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.models.training_job import TrainingJob
 from app.models.assembly_project import AssemblyProject
+from app.models.user import User
 from app.blender.runner import BlenderRunner
 from app.blender.config import BlenderRenderConfig, get_blender_path
+from app.services.webhooks import webhook_service
 
 
 class DatabaseTask(Task):
@@ -34,6 +37,82 @@ class DatabaseTask(Task):
         if self._db is not None:
             self._db.close()
             self._db = None
+
+
+def get_user_webhook_urls(db: Session, project_id: str) -> List[str]:
+    """
+    Get webhook URLs for a project's user.
+
+    Args:
+        db: Database session
+        project_id: UUID of the project
+
+    Returns:
+        List of webhook URLs
+    """
+    project = db.query(AssemblyProject).filter(
+        AssemblyProject.id == project_id
+    ).first()
+
+    if not project:
+        return []
+
+    user = db.query(User).filter(User.id == project.user_id).first()
+    if not user or not user.webhook_urls:
+        return []
+
+    return user.webhook_urls if isinstance(user.webhook_urls, list) else []
+
+
+def send_webhook_notification(
+    db: Session,
+    job_id: str,
+    job_type: str,
+    status: str,
+    result_data: Dict[str, Any] = None,
+    error_message: str = None
+):
+    """
+    Send webhook notification for job completion.
+
+    Args:
+        db: Database session
+        job_id: UUID of the job
+        job_type: Type of job (render, train, etc.)
+        status: Job status (SUCCESS, FAILED)
+        result_data: Optional result data
+        error_message: Optional error message
+    """
+    try:
+        # Get job to find project
+        job = db.query(TrainingJob).filter(TrainingJob.id == job_id).first()
+        if not job:
+            return
+
+        # Get webhook URLs from user
+        webhook_urls = get_user_webhook_urls(db, str(job.project_id))
+
+        if not webhook_urls:
+            logger.debug(f"No webhook URLs configured for job {job_id}")
+            return
+
+        # Send webhook notifications asynchronously
+        asyncio.run(
+            webhook_service.notify_job_completed(
+                webhook_urls=webhook_urls,
+                job_id=str(job_id),
+                job_type=job_type,
+                status=status,
+                result_data=result_data,
+                error_message=error_message
+            )
+        )
+
+        logger.info(f"Webhook notifications sent for job {job_id} to {len(webhook_urls)} URLs")
+
+    except Exception as e:
+        # Don't fail the task if webhook fails
+        logger.error(f"Error sending webhook notification for job {job_id}: {e}")
 
 
 def update_job_status(
@@ -57,7 +136,9 @@ def update_job_status(
         if result_data:
             # Merge result_data into metrics_json (preserving celery_task_id)
             if job.metrics_json:
-                job.metrics_json.update(result_data)
+                merged = dict(job.metrics_json)  # Create a copy
+                merged.update(result_data)
+                job.metrics_json = merged  # Assign new dict to trigger SQLAlchemy change detection
             else:
                 job.metrics_json = result_data
         db.commit()
@@ -164,7 +245,7 @@ def render_synthetic_data(
 
         # Create output directory
         output_base = Path("datasets")
-        output_dir = output_base / str(project_id) / f"render_{job_id}"
+        output_dir = (output_base / str(project_id) / f"render_{job_id}").resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Rendering config: {render_config}")
@@ -215,6 +296,16 @@ def render_synthetic_data(
 
             update_job_status(self.db, job_id, "SUCCESS", progress=100, result_data=result)
             logger.info(f"Rendering completed successfully: {result}")
+
+            # Send webhook notification
+            send_webhook_notification(
+                db=self.db,
+                job_id=job_id,
+                job_type="render",
+                status="SUCCESS",
+                result_data=result
+            )
+
             return result
         else:
             error_msg = render_result.error_message
@@ -227,6 +318,16 @@ def render_synthetic_data(
                     "blender_log": render_result.blender_log[-500:] if render_result.blender_log else None
                 }
             )
+
+            # Send webhook notification for failure
+            send_webhook_notification(
+                db=self.db,
+                job_id=job_id,
+                job_type="render",
+                status="FAILED",
+                error_message=error_msg
+            )
+
             return {
                 "status": "failed",
                 "error": error_msg,

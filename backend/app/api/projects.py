@@ -115,6 +115,42 @@ async def upload_project(
         )
 
 
+@router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+def create_project(
+    project_data: ProjectCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Create a new project with JSON data (for testing/existing blend files).
+
+    Args:
+        project_data: Project creation data
+        db: Database session
+        current_user: Authenticated user
+
+    Returns:
+        Created project data
+    """
+    project_id = uuid.uuid4()
+
+    project = AssemblyProject(
+        id=project_id,
+        user_id=current_user.id,
+        name=project_data.name,
+        description=project_data.description,
+        blend_file_path=project_data.blend_file_path,
+        status="created",
+    )
+
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+
+    logger.info(f"Project created: {project.id} - {project.name}")
+    return project
+
+
 @router.get("/", response_model=ProjectListResponse)
 def list_projects(
     page: int = Query(1, ge=1, description="Page number"),

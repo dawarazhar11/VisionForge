@@ -6,7 +6,7 @@ import math
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from loguru import logger
 
@@ -207,7 +207,12 @@ def get_job(
     Raises:
         HTTPException: If job not found or unauthorized
     """
-    job = db.query(TrainingJob).filter(TrainingJob.id == job_id).first()
+    job = (
+        db.query(TrainingJob)
+        .options(joinedload(TrainingJob.project))
+        .filter(TrainingJob.id == job_id)
+        .first()
+    )
 
     if not job:
         raise HTTPException(
@@ -215,8 +220,8 @@ def get_job(
             detail="Job not found",
         )
 
-    # Check ownership
-    if job.user_id != current_user.id:
+    # Check ownership through project
+    if job.project.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to access this job",
@@ -242,7 +247,12 @@ def cancel_job(
     Raises:
         HTTPException: If job not found or unauthorized
     """
-    job = db.query(TrainingJob).filter(TrainingJob.id == job_id).first()
+    job = (
+        db.query(TrainingJob)
+        .options(joinedload(TrainingJob.project))
+        .filter(TrainingJob.id == job_id)
+        .first()
+    )
 
     if not job:
         raise HTTPException(

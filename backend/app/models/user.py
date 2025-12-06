@@ -3,7 +3,7 @@ User model - Stores user authentication and profile information.
 """
 from sqlalchemy import Boolean, Column, Integer, String, DateTime
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid
 from datetime import datetime
 
@@ -22,6 +22,7 @@ class User(Base):
     is_active = Column(Boolean, default=True, index=True)
     is_superuser = Column(Boolean, default=False)
     storage_quota_mb = Column(Integer, default=5000)  # 5GB default
+    webhook_urls = Column(JSONB, default=list)  # List of webhook URLs for notifications
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
