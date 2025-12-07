@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/auth_token.dart';
 import '../models/user.dart';
+import '../models/project.dart';
 import '../utils/api_config.dart';
 
 /// API service for backend communication
@@ -106,17 +108,76 @@ class ApiService {
   }
 
   /// Get user projects
-  Future<List<dynamic>> getProjects() async {
+  Future<List<dynamic>> getProjects(String token) async {
     final response = await _client.get(
       Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/'),
-      headers: _headers,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
     );
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      return data['projects'] as List<dynamic>;
+      // Backend returns list directly or wrapped in 'projects' key
+      if (data is List) {
+        return data;
+      } else if (data is Map && data.containsKey('projects')) {
+        return data['projects'] as List<dynamic>;
+      }
+      return [];
     } else {
       throw Exception('Failed to load projects');
+    }
+  }
+
+  /// Create new project
+  Future<Map<String, dynamic>> createProject(
+    String token,
+    String name,
+    String? description,
+  ) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'name': name,
+          if (description != null && description.isNotEmpty) 'description': description,
+        }),
+      );
+
+      print('Create project response status: ${response.statusCode}');
+      print('Create project response body: ${response.body}');
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        if (response.body.isEmpty) {
+          return {'message': 'Project created successfully'};
+        }
+        return jsonDecode(response.body);
+      } else {
+        // Try to parse error response
+        String errorMessage = 'Failed to create project';
+        try {
+          final error = jsonDecode(response.body);
+          errorMessage = error['detail'] ?? error['message'] ?? errorMessage;
+        } catch (e) {
+          // If response isn't JSON, use the raw body
+          errorMessage = response.body.isNotEmpty
+              ? response.body
+              : 'Server returned status ${response.statusCode}';
+        }
+        throw Exception(errorMessage);
+      }
+    } catch (e) {
+      print('Create project error: $e');
+      if (e is FormatException) {
+        throw Exception('Invalid response format from server. Please check backend.');
+      }
+      rethrow;
     }
   }
 
@@ -157,17 +218,173 @@ class ApiService {
     }
   }
 
-  /// Download model file
-  Future<List<int>> downloadModel(String modelId) async {
+  /// Create training job
+  Future<Map<String, dynamic>> createTrainingJob(
+    String token,
+    String projectId,
+    String modelType,
+    int epochs,
+    int batchSize,
+    int imageSize, {
+    String? datasetId,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.jobs}/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'project_id': projectId,
+        'job_type': 'training',
+        'config': {
+          'model_type': modelType,
+          'epochs': epochs,
+          'batch_size': batchSize,
+          'image_size': imageSize,
+          if (datasetId != null) 'dataset_id': datasetId,
+        },
+      }),
+    );
+
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['detail'] ?? 'Failed to create training job');
+    }
+  }
+
+  /// Get all training jobs
+  Future<List<dynamic>> getTrainingJobs(String token) async {
     final response = await _client.get(
-      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.models}/$modelId/download'),
-      headers: _headers,
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.jobs}/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
     );
 
     if (response.statusCode == 200) {
-      return response.bodyBytes;
+      final data = jsonDecode(response.body);
+      // Backend returns list directly or wrapped in 'jobs' key
+      if (data is List) {
+        return data;
+      } else if (data is Map && data.containsKey('jobs')) {
+        return data['jobs'] as List<dynamic>;
+      }
+      return [];
+    } else {
+      throw Exception('Failed to load training jobs');
+    }
+  }
+
+  /// Get datasets for a project
+  Future<List<dynamic>> getDatasets(String token, String projectId) async {
+    final response = await _client.get(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId/datasets/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data is List) {
+        return data;
+      } else if (data is Map && data.containsKey('datasets')) {
+        return data['datasets'] as List<dynamic>;
+      }
+      return [];
+    } else {
+      throw Exception('Failed to load datasets');
+    }
+  }
+
+  /// Download model file with progress
+  Future<void> downloadModel(
+    String token,
+    String modelId,
+    String savePath, {
+    Function(int received, int total)? onProgress,
+  }) async {
+    final request = http.Request(
+      'GET',
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.models}/$modelId/download'),
+    );
+    request.headers.addAll({
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $token',
+    });
+
+    final response = await _client.send(request);
+
+    if (response.statusCode == 200) {
+      final contentLength = response.contentLength ?? 0;
+      int received = 0;
+      final List<int> bytes = [];
+
+      await for (var chunk in response.stream) {
+        bytes.addAll(chunk);
+        received += chunk.length;
+        onProgress?.call(received, contentLength);
+      }
+
+      final file = File(savePath);
+      await file.writeAsBytes(bytes);
     } else {
       throw Exception('Failed to download model');
+    }
+  }
+
+  /// Upload dataset (images and annotations)
+  Future<Map<String, dynamic>> uploadDataset(
+    String token,
+    String projectId,
+    List<String> imagePaths,
+    List<String> annotationPaths, {
+    Function(int uploaded, int total)? onProgress,
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId/datasets/upload'),
+    );
+
+    request.headers.addAll({
+      'Authorization': 'Bearer $token',
+    });
+
+    // Add image files
+    for (int i = 0; i < imagePaths.length; i++) {
+      final file = File(imagePaths[i]);
+      request.files.add(await http.MultipartFile.fromPath(
+        'images',
+        file.path,
+        filename: file.path.split(Platform.pathSeparator).last,
+      ));
+
+      // Add corresponding annotation if exists
+      if (i < annotationPaths.length) {
+        final annotFile = File(annotationPaths[i]);
+        request.files.add(await http.MultipartFile.fromPath(
+          'annotations',
+          annotFile.path,
+          filename: annotFile.path.split(Platform.pathSeparator).last,
+        ));
+      }
+
+      onProgress?.call(i + 1, imagePaths.length);
+    }
+
+    final response = await _client.send(request);
+    final responseBody = await response.stream.bytesToString();
+
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      return jsonDecode(responseBody);
+    } else {
+      final error = jsonDecode(responseBody);
+      throw Exception(error['detail'] ?? 'Failed to upload dataset');
     }
   }
 
