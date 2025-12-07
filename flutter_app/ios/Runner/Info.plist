@@ -53,5 +53,10 @@
 	<string>This app needs permission to save annotated images to your photo library.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Microphone access may be required for video recording features.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

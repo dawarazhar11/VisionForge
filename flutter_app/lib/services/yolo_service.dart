@@ -1,11 +1,22 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 
+/// Bounding box class for compatibility
+class BBox {
+  final double left;
+  final double top;
+  final double right;
+  final double bottom;
+
+  BBox({required this.left, required this.top, required this.right, required this.bottom});
+}
+
 /// Detection result containing bounding box and class information
-class Detection {
+class DetectionResult {
   final double x; // Center X (0-1)
   final double y; // Center Y (0-1)
   final double width; // Width (0-1)
@@ -14,7 +25,11 @@ class Detection {
   final int classId;
   final String className;
 
-  Detection({
+  // Compatibility aliases
+  String get label => className;
+  Color get color => _getClassColor(classId);
+
+  DetectionResult({
     required this.x,
     required this.y,
     required this.width,
@@ -34,9 +49,29 @@ class Detection {
     };
   }
 
+  /// Get bounding box in absolute coordinates (alias for compatibility)
+  BBox get bbox => BBox(
+    left: x - width / 2,
+    top: y - height / 2,
+    right: x + width / 2,
+    bottom: y + height / 2,
+  );
+
+  /// Get color for this class
+  static Color _getClassColor(int classId) {
+    final colors = [
+      Color(0xFFFF3838), Color(0xFFFF9D97), Color(0xFFFF701F), Color(0xFFFFB21D),
+      Color(0xFFCFF231), Color(0xFF48F90A), Color(0xFF92CC17), Color(0xFF3DDB86),
+      Color(0xFF1A9334), Color(0xFF00D4BB), Color(0xFF2C99A8), Color(0xFF00C2FF),
+      Color(0xFF344593), Color(0xFF6473FF), Color(0xFF0018EC), Color(0xFF8438FF),
+      Color(0xFF520085), Color(0xFFCB38FF), Color(0xFFFF95C8), Color(0xFFFF37C7),
+    ];
+    return colors[classId % colors.length];
+  }
+
   @override
   String toString() {
-    return 'Detection(class: $className, conf: ${(confidence * 100).toStringAsFixed(1)}%)';
+    return 'DetectionResult(class: $className, conf: ${(confidence * 100).toStringAsFixed(1)}%)';
   }
 }
 
@@ -81,8 +116,18 @@ class YoloService {
     }
   }
 
+  /// Alias for initialize() - for backward compatibility
+  Future<void> loadModel(String modelPath, {List<String>? labels}) async {
+    return initialize(modelPath: modelPath, labels: labels);
+  }
+
+  /// Alias for detectFromCamera() - for backward compatibility
+  Future<List<DetectionResult>> detectObjects(CameraImage cameraImage, {double? confidenceThreshold}) async {
+    return detectFromCamera(cameraImage, confidenceThreshold: confidenceThreshold);
+  }
+
   /// Run inference on camera frame
-  Future<List<Detection>> detectFromCamera(CameraImage cameraImage) async {
+  Future<List<DetectionResult>> detectFromCamera(CameraImage cameraImage, {double? confidenceThreshold}) async {
     if (!_isInitialized || _interpreter == null) {
       throw Exception('YOLO model not initialized');
     }
@@ -119,7 +164,7 @@ class YoloService {
   }
 
   /// Run inference on image file
-  Future<List<Detection>> detectFromFile(String imagePath) async {
+  Future<List<DetectionResult>> detectFromFile(String imagePath, {double? confidenceThreshold}) async {
     if (!_isInitialized || _interpreter == null) {
       throw Exception('YOLO model not initialized');
     }
@@ -259,8 +304,8 @@ class YoloService {
   }
 
   /// Postprocess model output to detections
-  List<Detection> _postprocessOutput(List<List<double>> output) {
-    final List<Detection> detections = [];
+  List<DetectionResult> _postprocessOutput(List<List<double>> output) {
+    final List<DetectionResult> detections = [];
 
     for (final detection in output) {
       // YOLO output format: [x, y, w, h, confidence, class_probs...]
@@ -287,7 +332,7 @@ class YoloService {
         continue;
       }
 
-      detections.add(Detection(
+      detections.add(DetectionResult(
         x: detection[0],
         y: detection[1],
         width: detection[2],
@@ -303,11 +348,11 @@ class YoloService {
   }
 
   /// Apply Non-Maximum Suppression to remove overlapping boxes
-  List<Detection> _nonMaximumSuppression(List<Detection> detections) {
+  List<DetectionResult> _nonMaximumSuppression(List<DetectionResult> detections) {
     // Sort by confidence (descending)
     detections.sort((a, b) => b.confidence.compareTo(a.confidence));
 
-    final List<Detection> result = [];
+    final List<DetectionResult> result = [];
 
     while (detections.isNotEmpty) {
       final current = detections.removeAt(0);
@@ -323,7 +368,7 @@ class YoloService {
   }
 
   /// Calculate Intersection over Union
-  double _calculateIoU(Detection a, Detection b) {
+  double _calculateIoU(DetectionResult a, DetectionResult b) {
     final aLeft = a.x - a.width / 2;
     final aTop = a.y - a.height / 2;
     final aRight = a.x + a.width / 2;

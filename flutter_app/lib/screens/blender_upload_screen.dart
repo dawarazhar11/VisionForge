@@ -68,31 +68,25 @@ class _BlenderUploadScreenState extends State<BlenderUploadScreen> {
 
       final apiService = ApiService();
 
-      // TODO: Implement actual Blender upload API call
-      // await apiService.uploadBlenderFile(
-      //   token,
-      //   widget.project.id,
-      //   _blenderFilePath!,
-      //   numRenders: _numRenders,
-      //   resolutionX: _resolutionX,
-      //   resolutionY: _resolutionY,
-      //   samples: _samples,
-      //   randomizeCamera: _randomizeCamera,
-      //   randomizeLighting: _randomizeLighting,
-      //   onProgress: (uploaded, total) {
-      //     setState(() {
-      //       _uploadProgress = uploaded / total;
-      //     });
-      //   },
-      // );
-
-      // Mock upload for demonstration
-      for (int i = 0; i <= 100; i++) {
-        await Future.delayed(const Duration(milliseconds: 20));
-        setState(() {
-          _uploadProgress = i / 100;
-        });
-      }
+      // Upload Blender file and generate synthetic dataset
+      await apiService.uploadBlenderFile(
+        token: token,
+        projectId: widget.project.id,
+        blenderFilePath: _blenderFilePath!,
+        numRenders: _numRenders,
+        resolutionX: _resolutionX,
+        resolutionY: _resolutionY,
+        samples: _samples,
+        randomizeCamera: _randomizeCamera,
+        randomizeLighting: _randomizeLighting,
+        onProgress: (uploaded, total) {
+          if (mounted) {
+            setState(() {
+              _uploadProgress = uploaded / total;
+            });
+          }
+        },
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

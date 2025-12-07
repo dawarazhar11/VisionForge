@@ -127,6 +127,91 @@ mv best_saved_model/best_float16.tflite ../flutter_app/assets/models/yolo_model.
 
 ## Building for Production
 
+### iOS App
+
+Build an iOS app for device testing and App Store submission:
+
+#### Quick iOS Build Checklist
+
+- [ ] macOS with Xcode 14.0+ installed
+- [ ] Apple Developer account enrolled
+- [ ] CocoaPods installed: `sudo gem install cocoapods`
+- [ ] Camera permissions added to `Info.plist`
+- [ ] Bundle identifier configured in Xcode
+- [ ] Code signing configured (automatic or manual)
+- [ ] TFLite model in `assets/models/`
+- [ ] Physical iOS device for testing (simulator doesn't support camera well)
+
+#### Prerequisites for iOS
+
+- macOS with Xcode 14.0 or higher
+- Apple Developer account ($99/year for distribution)
+- CocoaPods installed: `sudo gem install cocoapods`
+- Physical iOS device (iOS 12.0+) or Simulator
+
+#### iOS Setup Steps
+
+1. **Install CocoaPods dependencies:**
+
+```bash
+cd flutter_app/ios
+pod install
+cd ..
+```
+
+2. **Configure iOS permissions in `ios/Runner/Info.plist`:**
+
+The camera permission is required. Add this if not present:
+
+```xml
+<key>NSCameraUsageDescription</key>
+<string>This app needs camera access to detect mechanical components using YOLO object detection.</string>
+<key>NSPhotoLibraryUsageDescription</key>
+<string>This app needs photo library access to save detection results.</string>
+```
+
+3. **Update Bundle Identifier:**
+
+Open `ios/Runner.xcworkspace` in Xcode and:
+- Select the Runner project
+- Go to Signing & Capabilities
+- Set a unique Bundle Identifier (e.g., `com.yourcompany.yolovision`)
+- Select your Development Team
+
+4. **Configure minimum iOS version:**
+
+In `ios/Podfile`, ensure minimum version is set:
+
+```ruby
+platform :ios, '12.0'
+```
+
+#### Build iOS IPA for Testing
+
+```bash
+# Build for connected device (development)
+flutter build ios --release
+
+# Build IPA for distribution (requires proper signing)
+flutter build ipa --release
+
+# Output: build/ios/ipa/yolo_vision.ipa
+```
+
+#### Run on iOS Device/Simulator
+
+```bash
+# List available iOS devices
+flutter devices
+
+# Run on connected iPhone
+flutter run -d <device-id>
+
+# Run on simulator
+open -a Simulator
+flutter run
+```
+
 ### Android APK
 
 Build a release APK for distribution:
@@ -151,6 +236,39 @@ flutter build appbundle --release
 
 ### Code Signing
 
+#### iOS Code Signing
+
+iOS apps require proper code signing for distribution:
+
+1. **Automatic Signing (Recommended for Development):**
+
+Open `ios/Runner.xcworkspace` in Xcode:
+- Select Runner project → Signing & Capabilities
+- Check "Automatically manage signing"
+- Select your Apple Developer Team
+- Xcode will handle provisioning profiles
+
+2. **Manual Signing (For Distribution):**
+
+```bash
+# Create App Store provisioning profile in Apple Developer Portal
+# Download and install the profile
+# In Xcode: Uncheck "Automatically manage signing"
+# Select the provisioning profile manually
+```
+
+3. **Build signed IPA:**
+
+```bash
+# Archive and export IPA
+flutter build ipa --release
+
+# Or use Xcode:
+# Product → Archive → Distribute App
+```
+
+#### Android Code Signing
+
 For production builds, you need to sign your app:
 
 1. **Create keystore:**
@@ -165,7 +283,7 @@ keytool -genkey -v -keystore ~/yolo-vision-key.jks -keyalg RSA -keysize 2048 -va
 storePassword=<your-store-password>
 keyPassword=<your-key-password>
 keyAlias=yolo-vision
-storeFile=C:/Users/YourName/yolo-vision-key.jks
+storeFile=/Users/YourName/yolo-vision-key.jks
 ```
 
 3. **Update `android/app/build.gradle`:**
@@ -271,6 +389,65 @@ void _processCameraImage(CameraImage cameraImage) {
 
 ## Common Issues
 
+### iOS-Specific Issues
+
+#### Issue: "No provisioning profiles found"
+
+**Solution:** 
+1. Open `ios/Runner.xcworkspace` in Xcode
+2. Select Runner project → Signing & Capabilities
+3. Enable "Automatically manage signing"
+4. Select your Apple Developer Team
+5. If still failing, manually create provisioning profile in Apple Developer Portal
+
+#### Issue: CocoaPods dependency errors
+
+**Solution:**
+```bash
+cd ios
+pod deintegrate
+pod cache clean --all
+pod install
+cd ..
+flutter clean
+flutter pub get
+```
+
+#### Issue: "Module 'tflite_flutter' not found"
+
+**Solution:**
+Ensure TFLite plugin is properly configured for iOS:
+```bash
+flutter clean
+cd ios
+pod install
+cd ..
+flutter build ios
+```
+
+#### Issue: Camera doesn't work on iOS Simulator
+
+**Note:** Camera detection requires a physical iOS device. The simulator doesn't support camera functionality properly.
+
+**Solution:** Test on a real iPhone/iPad connected via USB or wirelessly.
+
+#### Issue: "Unsupported Architecture" when building for device
+
+**Solution:**
+In `ios/Podfile`, ensure proper architecture settings:
+```ruby
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['ONLY_ACTIVE_ARCH'] = 'NO'
+      config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
+    end
+  end
+end
+```
+
+### Android & iOS Common Issues
+
 ### Issue: "Model not found" Error
 
 **Solution:** Verify model is in `assets/models/` and listed in `pubspec.yaml`:
@@ -294,27 +471,90 @@ flutter pub get
 2. Reduce input size to 320x320
 3. Skip frames (process every 2nd or 3rd frame)
 4. Build in release mode: `flutter run --release`
+5. **iOS:** Consider using Core ML instead of TFLite for better performance
 
 ### Issue: Backend Connection Failed
 
 **Solutions:**
 1. Check backend is running: `http://localhost:8002/docs`
-2. For emulator, use `10.0.2.2` instead of `localhost`
-3. For device, ensure on same WiFi network
-4. Check firewall settings
+2. **Android emulator:** Use `10.0.2.2` instead of `localhost`
+3. **iOS simulator:** Use your Mac's local IP or `localhost`
+4. **Physical device:** Ensure on same WiFi network
+5. Check firewall settings
+6. For iOS, ensure App Transport Security allows your backend URL
 
 ### Issue: Camera Permission Denied
 
-**Solution:** Manually enable camera permission:
+**Android Solution:** 
 - Settings → Apps → YOLO Vision → Permissions → Camera → Allow
+
+**iOS Solution:**
+- Settings → YOLO Vision → Camera → Enable
+- Ensure `NSCameraUsageDescription` is in `Info.plist`
 
 ## Beta Distribution
 
-### TestFlight (iOS - Future)
+### TestFlight (iOS)
 
-Not yet implemented. iOS support planned for Week 9-10.
+TestFlight is Apple's beta testing platform integrated with App Store Connect.
 
-### Firebase App Distribution (Android)
+1. **Archive your app in Xcode:**
+
+```bash
+# Build IPA
+flutter build ipa --release
+
+# Or use Xcode:
+# Open ios/Runner.xcworkspace
+# Product → Archive
+```
+
+2. **Upload to App Store Connect:**
+
+**Option A: Using Xcode**
+- After archiving, Window → Organizer
+- Select your archive
+- Click "Distribute App"
+- Choose "TestFlight & App Store"
+- Follow the wizard to upload
+
+**Option B: Using Transporter app**
+- Download Transporter from Mac App Store
+- Drag and drop the `.ipa` file
+- Click "Deliver"
+
+**Option C: Using command line**
+```bash
+# Install fastlane
+sudo gem install fastlane
+
+# Initialize fastlane
+cd ios
+fastlane init
+
+# Upload to TestFlight
+fastlane pilot upload --ipa ../build/ios/ipa/yolo_vision.ipa
+```
+
+3. **Add testers in App Store Connect:**
+- Go to TestFlight tab
+- Add internal testers (up to 100)
+- Add external testers (requires Beta App Review)
+- Testers receive email invitation
+
+4. **Enable beta testing:**
+- Wait for processing (usually 10-30 minutes)
+- Provide export compliance information
+- Submit for Beta App Review (external testers only)
+
+**Important iOS-specific considerations:**
+- First upload requires full metadata in App Store Connect
+- Camera usage description must be clear and justified
+- TFLite model should be optimized for iOS (use Core ML if possible)
+
+### Firebase App Distribution (Android & iOS)
+
+Firebase App Distribution works for both platforms:
 
 1. **Setup Firebase:**
    ```bash
@@ -323,11 +563,19 @@ Not yet implemented. iOS support planned for Week 9-10.
    firebase init hosting
    ```
 
-2. **Upload APK:**
+2. **Upload APK (Android):**
    ```bash
    firebase appdistribution:distribute \
      build/app/outputs/flutter-apk/app-release.apk \
-     --app YOUR_FIREBASE_APP_ID \
+     --app YOUR_FIREBASE_ANDROID_APP_ID \
+     --groups beta-testers
+   ```
+
+3. **Upload IPA (iOS):**
+   ```bash
+   firebase appdistribution:distribute \
+     build/ios/ipa/yolo_vision.ipa \
+     --app YOUR_FIREBASE_IOS_APP_ID \
      --groups beta-testers
    ```
 
@@ -351,8 +599,30 @@ After beta testing:
 
 1. **Week 5-6:** Implement model download from backend
 2. **Week 7:** Add performance profiling and optimization
-3. **Week 8:** Multi-device testing (5+ different phones)
-4. **Week 9-10:** iOS port and TestFlight beta
+3. **Week 8:** Multi-device testing (5+ different phones, both iOS and Android)
+4. **Week 9:** iOS optimization with Core ML conversion
+5. **Week 10:** Production release to App Store and Play Store
+
+### Optional iOS Performance Enhancement: Core ML
+
+For better iOS performance, consider converting your TFLite model to Core ML:
+
+```python
+# Install coremltools
+pip install coremltools
+
+# Convert YOLO model to Core ML
+import coremltools as ct
+from ultralytics import YOLO
+
+# Load and export
+model = YOLO('path/to/best.pt')
+model.export(format='coreml', nms=True)
+
+# This creates a .mlpackage that can be used directly in iOS
+```
+
+Then update your Flutter app to use Core ML on iOS and TFLite on Android for optimal performance.
 
 ## Support
 

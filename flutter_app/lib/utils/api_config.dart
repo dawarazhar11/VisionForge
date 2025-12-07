@@ -1,9 +1,9 @@
 /// API configuration for backend communication
 class ApiConfig {
-  // Base URL - Update this to your backend server address
-  static const String baseUrl = 'http://10.0.2.2:8002'; // Android emulator localhost
-  // Use 'http://localhost:8002' for iOS simulator
-  // Use 'http://YOUR_IP:8002' for physical devices
+  // Base URL - Backend server running on PC at 192.168.0.16
+  static const String baseUrl = 'http://192.168.0.16:8002';
+  // iOS simulator: use 'http://localhost:8002' if backend on Mac
+  // Physical device: use PC's IP address (currently 192.168.0.16)
 
   static const String apiPrefix = '/api/v1';
 

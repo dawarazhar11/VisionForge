@@ -106,10 +106,14 @@ class ApiService {
   }
 
   /// Get user projects
-  Future<List<dynamic>> getProjects() async {
+  Future<List<dynamic>> getProjects([String? token]) async {
+    final headers = token != null
+      ? {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'}
+      : _headers;
+
     final response = await _client.get(
       Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/'),
-      headers: _headers,
+      headers: headers,
     );
 
     if (response.statusCode == 200) {
@@ -117,6 +121,28 @@ class ApiService {
       return data['projects'] as List<dynamic>;
     } else {
       throw Exception('Failed to load projects');
+    }
+  }
+
+  /// Create new project
+  Future<Map<String, dynamic>> createProject(String token, String name, [String? description]) async {
+    final response = await _client.post(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'name': name,
+        if (description != null) 'description': description,
+      }),
+    );
+
+    if (response.statusCode == 201) {
+      return jsonDecode(response.body);
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['detail'] ?? 'Failed to create project');
     }
   }
 
@@ -158,16 +184,170 @@ class ApiService {
   }
 
   /// Download model file
-  Future<List<int>> downloadModel(String modelId) async {
+  Future<List<int>> downloadModel(String token, String modelId, String filePath, {Function(int, int)? onProgress}) async {
     final response = await _client.get(
       Uri.parse('${ApiConfig.baseUrl}${ApiConfig.models}/$modelId/download'),
-      headers: _headers,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
     );
 
     if (response.statusCode == 200) {
       return response.bodyBytes;
     } else {
       throw Exception('Failed to download model');
+    }
+  }
+
+  /// Get training jobs
+  Future<List<dynamic>> getTrainingJobs(String token, [String? projectId]) async {
+    final url = projectId != null
+      ? '${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId/training'
+      : '${ApiConfig.baseUrl}${ApiConfig.jobs}/';
+
+    final response = await _client.get(
+      Uri.parse(url),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['jobs'] as List<dynamic>;
+    } else {
+      throw Exception('Failed to load training jobs');
+    }
+  }
+
+  /// Get datasets for a project
+  Future<List<dynamic>> getDatasets(String token, String projectId) async {
+    final response = await _client.get(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId/datasets'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['datasets'] as List<dynamic>;
+    } else {
+      throw Exception('Failed to load datasets');
+    }
+  }
+
+  /// Upload dataset
+  Future<Map<String, dynamic>> uploadDataset(
+    String token,
+    String projectId,
+    List<String> imagePaths,
+    List<String> annotationPaths,
+    {Function(int, int)? onProgress}
+  ) async {
+    var request = http.MultipartRequest(
+      'POST',
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId/datasets'),
+    );
+
+    request.headers['Authorization'] = 'Bearer $token';
+
+    // Add image files
+    for (var imagePath in imagePaths) {
+      request.files.add(await http.MultipartFile.fromPath('images', imagePath));
+    }
+
+    // Add annotation files
+    for (var annotationPath in annotationPaths) {
+      request.files.add(await http.MultipartFile.fromPath('annotations', annotationPath));
+    }
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode == 201) {
+      return jsonDecode(response.body);
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['detail'] ?? 'Failed to upload dataset');
+    }
+  }
+
+  /// Create training job
+  Future<Map<String, dynamic>> createTrainingJob(
+    String token,
+    String projectId,
+    String modelType,
+    int epochs,
+    int batchSize,
+    int imageSize,
+    {required String datasetId}
+  ) async {
+    final response = await _client.post(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId/training'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'dataset_id': datasetId,
+        'model_type': modelType,
+        'epochs': epochs,
+        'batch_size': batchSize,
+        'image_size': imageSize,
+      }),
+    );
+
+    if (response.statusCode == 201) {
+      return jsonDecode(response.body);
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['detail'] ?? 'Failed to create training job');
+    }
+  }
+
+  /// Upload Blender file for synthetic data generation
+  Future<Map<String, dynamic>> uploadBlenderFile({
+    required String token,
+    required String projectId,
+    required String blenderFilePath,
+    int numRenders = 100,
+    int resolutionX = 640,
+    int resolutionY = 640,
+    int samples = 64,
+    bool randomizeCamera = true,
+    bool randomizeLighting = true,
+    Function(int, int)? onProgress,
+  }) async {
+    var request = http.MultipartRequest(
+      'POST',
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId/blender'),
+    );
+
+    request.headers['Authorization'] = 'Bearer $token';
+
+    // Add configuration fields
+    request.fields['num_renders'] = numRenders.toString();
+    request.fields['resolution_x'] = resolutionX.toString();
+    request.fields['resolution_y'] = resolutionY.toString();
+    request.fields['samples'] = samples.toString();
+    request.fields['randomize_camera'] = randomizeCamera.toString();
+    request.fields['randomize_lighting'] = randomizeLighting.toString();
+
+    // Add the Blender file
+    request.files.add(await http.MultipartFile.fromPath('blender_file', blenderFilePath));
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['detail'] ?? 'Failed to upload Blender file');
     }
   }
 

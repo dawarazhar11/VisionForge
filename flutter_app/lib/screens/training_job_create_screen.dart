@@ -102,7 +102,7 @@ class _TrainingJobCreateScreenState extends State<TrainingJobCreateScreen> {
         _epochs,
         _batchSize,
         _imageSize,
-        datasetId: _selectedDatasetId,
+        datasetId: _selectedDatasetId!,
       );
 
       if (mounted) {
