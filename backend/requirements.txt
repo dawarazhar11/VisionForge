@@ -22,6 +22,7 @@ email-validator==2.3.0
 pydantic-settings==2.12.0
 python-dotenv==1.2.1
 loguru==0.7.3
+httpx==0.28.1
 
 # ML libraries for YOLO training
 ultralytics==8.3.234
