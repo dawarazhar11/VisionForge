@@ -25,23 +25,27 @@ class AuthProvider with ChangeNotifier {
   /// Initialize auth state from storage
   Future<void> initialize() async {
     _isLoading = true;
-    notifyListeners();
 
     try {
+      print('🔐 AuthProvider: Starting initialization');
       final prefs = await SharedPreferences.getInstance();
       final tokenJson = prefs.getString('auth_token');
 
       if (tokenJson != null) {
+        print('🔐 AuthProvider: Found stored token');
         _authToken = AuthToken.fromJson(jsonDecode(tokenJson));
         _apiService.setAuthToken(_authToken!);
 
         // TODO: Fetch user profile
+      } else {
+        print('🔐 AuthProvider: No stored token found');
       }
     } catch (e) {
+      print('❌ AuthProvider: Initialization error: $e');
       _error = 'Failed to load auth state: $e';
     } finally {
       _isLoading = false;
-      notifyListeners();
+      print('🔐 AuthProvider: Initialization complete');
     }
   }
 
@@ -82,19 +86,25 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
+      print('🔑 AuthProvider: Attempting login for email: $email');
       _authToken = await _apiService.login(
         email: email,
         password: password,
       );
 
+      print('✅ AuthProvider: Login successful, got token');
+
       // Save token to storage
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('auth_token', jsonEncode(_authToken!.toJson()));
+
+      print('✅ AuthProvider: Token saved to storage');
 
       _isLoading = false;
       notifyListeners();
       return true;
     } catch (e) {
+      print('❌ AuthProvider: Login failed with error: $e');
       _error = e.toString().replaceAll('Exception: ', '');
       _isLoading = false;
       notifyListeners();

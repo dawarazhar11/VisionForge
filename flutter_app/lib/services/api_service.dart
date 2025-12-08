@@ -69,8 +69,12 @@ class ApiService {
     required String email,
     required String password,
   }) async {
+    final url = '${ApiConfig.baseUrl}${ApiConfig.authLogin}';
+    print('🌐 ApiService: POST $url');
+    print('🌐 ApiService: Email: $email');
+
     final response = await _client.post(
-      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.authLogin}'),
+      Uri.parse(url),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'email': email,
@@ -78,13 +82,18 @@ class ApiService {
       }),
     );
 
+    print('🌐 ApiService: Response status: ${response.statusCode}');
+    print('🌐 ApiService: Response body: ${response.body}');
+
     if (response.statusCode == 200) {
       final token = AuthToken.fromJson(jsonDecode(response.body));
       setAuthToken(token);
       return token;
     } else {
       final error = jsonDecode(response.body);
-      throw Exception(error['detail'] ?? 'Login failed');
+      final errorMessage = error['detail'] ?? 'Login failed';
+      print('❌ ApiService: Login error: $errorMessage');
+      throw Exception(errorMessage);
     }
   }
 

@@ -66,14 +66,20 @@ class _AppInitializerState extends State<AppInitializer> {
   }
 
   Future<void> _initializeApp() async {
-    // Initialize auth provider to check for existing token
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    await authProvider.initialize();
-
-    if (mounted) {
-      setState(() {
-        _isInitializing = false;
-      });
+    try {
+      print('🚀 App: Starting initialization');
+      // Initialize auth provider to check for existing token
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      await authProvider.initialize();
+      print('✅ App: Initialization complete');
+    } catch (e) {
+      print('❌ App: Initialization error: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isInitializing = false;
+        });
+      }
     }
   }
 
