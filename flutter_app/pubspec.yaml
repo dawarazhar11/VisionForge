@@ -50,6 +50,9 @@ dependencies:
   # HTTP client for backend API
   http: ^1.1.2
 
+  # Dio for better file uploads with progress tracking
+  dio: ^5.4.0
+
   # Shared preferences for local storage
   shared_preferences: ^2.2.2
 

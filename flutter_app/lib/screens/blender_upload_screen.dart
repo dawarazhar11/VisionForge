@@ -29,16 +29,53 @@ class _BlenderUploadScreenState extends State<BlenderUploadScreen> {
   bool _randomizeLighting = true;
 
   Future<void> _selectBlenderFile() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['blend'],
-      dialogTitle: 'Select Blender File',
-    );
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['blend'],
+        dialogTitle: 'Select Blender File',
+        allowCompression: false, // Don't compress, we want the original file
+        withData: false, // Don't load into memory, use file path
+      );
 
-    if (result != null && result.files.single.path != null) {
-      setState(() {
-        _blenderFilePath = result.files.single.path;
-      });
+      if (result != null && result.files.single.path != null) {
+        final filePath = result.files.single.path!;
+        final file = File(filePath);
+
+        // Check if file exists and get size
+        if (await file.exists()) {
+          final fileSize = await file.length();
+          final fileSizeMB = (fileSize / (1024 * 1024)).toStringAsFixed(2);
+
+          print('Selected Blender file: $filePath');
+          print('File size: $fileSizeMB MB');
+
+          if (mounted) {
+            setState(() {
+              _blenderFilePath = filePath;
+            });
+
+            // Show file size info
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('File selected: $fileSizeMB MB'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      print('Error selecting file: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error selecting file: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -132,16 +169,35 @@ class _BlenderUploadScreenState extends State<BlenderUploadScreen> {
               color: Colors.blue.shade50,
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Row(
+                child: Column(
                   children: [
-                    Icon(Icons.info_outline, color: Colors.blue.shade700),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Upload a Blender scene (.blend) to generate synthetic training data with automatic randomization and annotations.',
-                        style: TextStyle(color: Colors.blue.shade900),
-                      ),
+                    Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.blue.shade700),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Upload a Blender scene (.blend) to generate synthetic training data with automatic randomization and annotations.',
+                            style: TextStyle(color: Colors.blue.shade900),
+                          ),
+                        ),
+                      ],
                     ),
+                    if (Platform.isIOS) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Icon(Icons.warning_amber, color: Colors.orange.shade700, size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'iOS Tip: For large files (>100MB), make sure the file is downloaded locally (not in iCloud). If file doesn\'t appear, try using the macOS app or reducing file size.',
+                              style: TextStyle(color: Colors.orange.shade900, fontSize: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),

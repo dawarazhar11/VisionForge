@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 import '../models/auth_token.dart';
 import '../models/user.dart';
 import '../models/project.dart';
@@ -9,12 +10,20 @@ import '../utils/api_config.dart';
 /// API service for backend communication
 class ApiService {
   final http.Client _client = http.Client();
+  late final Dio _dio;
   AuthToken? _authToken;
 
   // Singleton pattern
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
-  ApiService._internal();
+  ApiService._internal() {
+    // Initialize Dio with longer timeout for large file uploads
+    _dio = Dio(BaseOptions(
+      connectTimeout: const Duration(minutes: 5),
+      receiveTimeout: const Duration(minutes: 10),
+      sendTimeout: const Duration(minutes: 10),
+    ));
+  }
 
   /// Get authorization headers
   Map<String, String> get _headers {
@@ -366,6 +375,9 @@ class ApiService {
   }
 
   /// Upload Blender file for synthetic data generation
+  /// This is a two-step process:
+  /// 1. Upload the .blend file to /projects/upload
+  /// 2. Create a rendering job via /jobs/
   Future<Map<String, dynamic>> uploadBlenderFile({
     required String token,
     required String projectId,
@@ -378,32 +390,108 @@ class ApiService {
     bool randomizeLighting = true,
     Function(int, int)? onProgress,
   }) async {
-    var request = http.MultipartRequest(
-      'POST',
-      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId/blender'),
-    );
+    try {
+      print('📤 Step 1: Uploading Blender file with Dio...');
 
-    request.headers['Authorization'] = 'Bearer $token';
+      // Get file info
+      final file = File(blenderFilePath);
+      final fileLength = await file.length();
+      final fileName = file.path.split(Platform.pathSeparator).last;
 
-    // Add configuration fields
-    request.fields['num_renders'] = numRenders.toString();
-    request.fields['resolution_x'] = resolutionX.toString();
-    request.fields['resolution_y'] = resolutionY.toString();
-    request.fields['samples'] = samples.toString();
-    request.fields['randomize_camera'] = randomizeCamera.toString();
-    request.fields['randomize_lighting'] = randomizeLighting.toString();
+      print('📁 File: $fileName (${(fileLength / 1024 / 1024).toStringAsFixed(2)} MB)');
 
-    // Add the Blender file
-    request.files.add(await http.MultipartFile.fromPath('blender_file', blenderFilePath));
+      // Step 1: Upload the Blender file to /projects/upload using Dio
+      final formData = FormData.fromMap({
+        'project_id': projectId,
+        'file': await MultipartFile.fromFile(
+          blenderFilePath,
+          filename: fileName,
+        ),
+      });
 
-    final streamedResponse = await request.send();
-    final response = await http.Response.fromStream(streamedResponse);
+      final uploadResponse = await _dio.post(
+        '${ApiConfig.baseUrl}${ApiConfig.projects}/upload',
+        data: formData,
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        ),
+        onSendProgress: (sent, total) {
+          print('📊 Upload progress: ${(sent / total * 100).toStringAsFixed(1)}% ($sent / $total bytes)');
+          onProgress?.call(sent, total);
+        },
+      );
 
-    if (response.statusCode == 201 || response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      final error = jsonDecode(response.body);
-      throw Exception(error['detail'] ?? 'Failed to upload Blender file');
+      if (uploadResponse.statusCode != 201 && uploadResponse.statusCode != 200) {
+        final error = uploadResponse.data;
+        throw Exception(error['detail'] ?? 'Failed to upload Blender file');
+      }
+
+      final uploadResult = uploadResponse.data;
+      final fileId = uploadResult['file_id'] ?? uploadResult['id'];
+
+      print('✅ Step 1 complete: File uploaded with ID: $fileId');
+      print('📋 Step 2: Creating rendering job...');
+
+      // Step 2: Create a rendering job
+      final jobResponse = await _dio.post(
+        '${ApiConfig.baseUrl}${ApiConfig.jobs}/',
+        data: {
+          'project_id': projectId,
+          'job_type': 'render',
+          'config': {
+            'file_id': fileId,
+            'num_renders': numRenders,
+            'resolution_x': resolutionX,
+            'resolution_y': resolutionY,
+            'samples': samples,
+            'randomize_camera': randomizeCamera,
+            'randomize_lighting': randomizeLighting,
+          },
+        },
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+
+      if (jobResponse.statusCode != 201 && jobResponse.statusCode != 200) {
+        final error = jobResponse.data;
+        throw Exception(error['detail'] ?? 'Failed to create rendering job');
+      }
+
+      final jobResult = jobResponse.data;
+      print('✅ Step 2 complete: Rendering job created with ID: ${jobResult['id']}');
+
+      return {
+        'file_id': fileId,
+        'job_id': jobResult['id'],
+        'job': jobResult,
+      };
+    } on DioException catch (e) {
+      print('❌ Dio Error in uploadBlenderFile:');
+      print('   Type: ${e.type}');
+      print('   Message: ${e.message}');
+      print('   Response: ${e.response?.data}');
+
+      if (e.type == DioExceptionType.connectionTimeout) {
+        throw Exception('Connection timeout. Please check your network connection.');
+      } else if (e.type == DioExceptionType.sendTimeout) {
+        throw Exception('Upload timeout. The file is too large or connection is too slow.');
+      } else if (e.type == DioExceptionType.receiveTimeout) {
+        throw Exception('Server response timeout. Please try again.');
+      } else if (e.response != null) {
+        final error = e.response!.data;
+        throw Exception(error['detail'] ?? error['message'] ?? 'Upload failed');
+      } else {
+        throw Exception('Network error: ${e.message}');
+      }
+    } catch (e) {
+      print('❌ Error in uploadBlenderFile: $e');
+      rethrow;
     }
   }
 
