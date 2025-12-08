@@ -1,9 +1,9 @@
 /// API configuration for backend communication
 class ApiConfig {
-  // Base URL - Backend server running on PC at 192.168.0.16
-  static const String baseUrl = 'http://192.168.0.16:8002';
-  // iOS simulator: use 'http://localhost:8002' if backend on Mac
-  // Physical device: use PC's IP address (currently 192.168.0.16)
+  // Base URL - Backend server via Netbird VPN
+  static const String baseUrl = 'http://100.108.186.54:8002';
+  // Using Netbird mesh VPN for continuous connectivity
+  // Physical device: Netbird IP address (currently 100.108.186.54)
 
   static const String apiPrefix = '/api/v1';
 
