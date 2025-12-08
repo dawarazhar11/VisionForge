@@ -1,0 +1,182 @@
+version: '3.8'
+
+services:
+  # Portainer - Container Management UI
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: yolo_portainer
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - yolo_network
+    labels:
+      - "com.portainer.description=Container Management UI"
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: yolo_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: yolo_assembly
+      POSTGRES_USER: yolo_user
+      POSTGRES_PASSWORD: yolo_dev_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yolo_user -d yolo_assembly"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - yolo_network
+
+  # Redis (for Celery broker and result backend)
+  redis:
+    image: redis:7-alpine
+    container_name: yolo_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - yolo_network
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: yolo_backend
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      # Application
+      APP_NAME: "YOLO Assembly Vision API"
+      APP_VERSION: "0.1.0"
+      DEBUG: "True"
+      API_PREFIX: "/api/v1"
+
+      # Database
+      DATABASE_URL: "postgresql://yolo_user:yolo_dev_pass@postgres:5432/yolo_assembly"
+
+      # Redis & Celery
+      REDIS_URL: "redis://redis:6379/0"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+
+      # Security (CHANGE IN PRODUCTION!)
+      SECRET_KEY: "dev-secret-key-change-in-production"
+      ALGORITHM: "HS256"
+      ACCESS_TOKEN_EXPIRE_MINUTES: "15"
+      REFRESH_TOKEN_EXPIRE_DAYS: "7"
+
+      # File Upload
+      MAX_UPLOAD_SIZE_MB: "500"
+      UPLOAD_DIR: "storage/uploads"
+      DATASET_DIR: "storage/datasets"
+      MODEL_DIR: "storage/models"
+
+      # CORS
+      CORS_ORIGINS: '["http://localhost:3000","http://localhost:8080","http://localhost:8002"]'
+    volumes:
+      - ./backend/storage:/app/storage
+      - ./backend/logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - yolo_network
+
+  # Celery Worker
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: yolo_celery_worker
+    restart: unless-stopped
+    command: celery -A app.celery_app.celery_app worker --loglevel=info --concurrency=2
+    environment:
+      # Database
+      DATABASE_URL: "postgresql://yolo_user:yolo_dev_pass@postgres:5432/yolo_assembly"
+
+      # Redis & Celery
+      REDIS_URL: "redis://redis:6379/0"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+
+      # Storage
+      UPLOAD_DIR: "storage/uploads"
+      DATASET_DIR: "storage/datasets"
+      MODEL_DIR: "storage/models"
+    volumes:
+      - ./backend/storage:/app/storage
+      - ./backend/logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - yolo_network
+
+  # Celery Beat (for scheduled tasks - optional)
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: yolo_celery_beat
+    restart: unless-stopped
+    command: celery -A app.celery_app.celery_app beat --loglevel=info
+    environment:
+      # Database
+      DATABASE_URL: "postgresql://yolo_user:yolo_dev_pass@postgres:5432/yolo_assembly"
+
+      # Redis & Celery
+      REDIS_URL: "redis://redis:6379/0"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+    volumes:
+      - ./backend/logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - yolo_network
+
+networks:
+  yolo_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  portainer_data:
+    driver: local
