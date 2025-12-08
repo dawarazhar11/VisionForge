@@ -139,7 +139,9 @@ def create_project(
         user_id=current_user.id,
         name=project_data.name,
         description=project_data.description,
-        blend_file_path=project_data.blend_file_path,
+        file_path=f"placeholder/{project_id}.blend",  # Placeholder for JSON-created projects
+        file_size_mb=0.0,  # No file uploaded yet
+        file_type="blend",  # Default type
         status="created",
     )
 
