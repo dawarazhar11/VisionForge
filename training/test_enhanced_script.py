@@ -4,11 +4,12 @@
 # Verifies class mappings, randomization logic, and enhanced scenarios
 # ============================================================================
 
+import os
 import sys
 sys.path.insert(0, r'C:\Users\david.arnold\AppData\Roaming\Python\Python311\site-packages')
 
 # Import configuration from the main script
-exec(open('eevee_desk_scene17_dualpass.py').read())
+exec(open(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'blender', 'eevee_desk_scene17_dualpass.py')).read())
 
 def test_class_mapping_consistency():
     """Test that CLASSES and OBJ_TO_CLASS are properly aligned"""

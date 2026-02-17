@@ -26,7 +26,7 @@ echo ⚠️  If you get "ModuleNotFoundError: No module named 'cv2'", run:
 echo    install_local_packages.bat
 echo.
 
-"C:\Program Files\Blender Foundation\Blender 4.5\blender.exe" "desk_scene_17-ligthting enhaned.blend" --background --python "eevee_desk_scene17_dualpass.py"
+"C:\Program Files\Blender Foundation\Blender 4.5\blender.exe" "desk_scene_17-ligthting enhaned.blend" --background --python "blender/eevee_desk_scene17_dualpass.py"
 
 echo.
 echo ================================================================================

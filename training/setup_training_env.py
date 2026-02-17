@@ -60,7 +60,7 @@ def verify_dataset():
     
     if not os.path.exists(dataset_dir):
         print(f"❌ Dataset directory '{dataset_dir}' not found")
-        print("Run 'run_memory_safe_desk_scene.bat' first to generate data")
+        print("Run 'scripts/training/run_memory_safe_desk_scene.bat' first to generate data")
         return False
     
     # Count image/label pairs
@@ -118,12 +118,12 @@ def main():
     
     if dataset_ok:
         print(f"\n🎯 Ready to train! Run:")
-        print(f"   train_and_deploy.bat")
+        print(f"   scripts/training/train_and_deploy.bat")
         print(f"   -- OR --")
-        print(f"   python train_yolo_model.py")
+        print(f"   python training/train_yolo_model.py")
     else:
         print(f"\n⚠️  Generate synthetic data first:")
-        print(f"   run_memory_safe_desk_scene.bat")
+        print(f"   scripts/training/run_memory_safe_desk_scene.bat")
     
     return True
 

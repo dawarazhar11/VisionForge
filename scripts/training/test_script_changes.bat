@@ -10,7 +10,7 @@ echo   • Small holes training improvements
 echo   • Bracket orientation enhancements
 echo.
 
-python test_enhanced_script.py
+python training/test_enhanced_script.py
 
 echo.
 echo ================================================================================
