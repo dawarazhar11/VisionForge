@@ -1,6 +1,6 @@
 <div align="center">
 
-# AssemblyVision AI
+# VisionForge
 
 **End-to-end synthetic data generation, YOLO model training, and mobile deployment platform for real-time object detection.**
 
@@ -19,7 +19,7 @@
 
 ## Overview
 
-AssemblyVision AI automates the entire computer vision pipeline -- from generating synthetic training data using Blender 3D renders, to training custom YOLO object detection models, to deploying them on mobile devices for real-time inference.
+VisionForge automates the entire computer vision pipeline -- from generating synthetic training data using Blender 3D renders, to training custom YOLO object detection models, to deploying them on mobile devices for real-time inference.
 
 Upload a 3D assembly file, generate hundreds of labeled training images automatically, train a detection model, and deploy it to iOS or Android -- all through a unified API and mobile app.
 
