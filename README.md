@@ -1,6 +1,6 @@
 <div align="center">
 
-# AssemblyVision AI
+# VisionForge
 
 **End-to-end synthetic data generation, YOLO model training, and mobile deployment platform for real-time object detection.**
 
