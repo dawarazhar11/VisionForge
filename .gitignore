@@ -1,4 +1,5 @@
-# Claude Memory Bank System - Never commit these files
+# Claude
+.claude/
 CLAUDE.md
 CLAUDE-*.md
 
