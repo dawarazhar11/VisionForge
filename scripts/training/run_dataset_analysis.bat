@@ -26,7 +26,7 @@ if not exist %DATASET_PATH% (
 echo 📊 Running comprehensive dataset analysis...
 echo.
 
-python analyze_detection_results.py %DATASET_PATH% --visualize --deep-holes
+python training/analyze_detection_results.py %DATASET_PATH% --visualize --deep-holes
 
 echo.
 echo ================================================================================

@@ -29,7 +29,7 @@ echo.
 echo 🎯 Starting YOLO training pipeline...
 echo.
 
-python train_yolo_model.py
+python training/train_yolo_model.py
 
 echo.
 echo ================================================================================
