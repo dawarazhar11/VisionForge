@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment."""
 
     # Application
-    APP_NAME: str = "YOLO Assembly Vision API"
+    APP_NAME: str = "VisionForge API"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = True
     API_PREFIX: str = "/api/v1"

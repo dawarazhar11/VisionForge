@@ -1,2 +1,2 @@
-# YOLO Assembly Vision - Backend API
+# VisionForge - Backend API
 __version__ = "0.1.0"

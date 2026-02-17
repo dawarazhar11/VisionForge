@@ -1,3 +1,3 @@
 """
-Tests package for YOLO Assembly Vision backend.
+Tests package for VisionForge backend.
 """

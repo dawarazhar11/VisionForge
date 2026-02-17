@@ -1,4 +1,4 @@
-# YOLO Assembly Vision - TODO List
+# VisionForge - TODO List
 
 **Last Updated:** 2025-12-03
 **Current Phase:** Planning → Phase 1 (Backend Infrastructure)

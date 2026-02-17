@@ -1,8 +1,8 @@
 {
 	"info": {
 		"_postman_id": "yolo-assembly-vision-api",
-		"name": "YOLO Assembly Vision API",
-		"description": "Complete API collection for YOLO Assembly Vision platform - synthetic data generation, YOLO model training, and computer vision workflows.\n\n## Authentication Flow\n\n1. Register a new user\n2. Login to get access_token and refresh_token\n3. Use access_token in Authorization header for all protected endpoints\n4. Refresh token when access_token expires\n\n## Variables\n\nSet these collection variables:\n- `base_url`: API base URL (default: http://localhost:8001)\n- `access_token`: Automatically set after login\n- `refresh_token`: Automatically set after login\n- `user_email`: Your test user email\n- `user_password`: Your test user password\n- `project_id`: Set after uploading a project\n- `job_id`: Set after creating a job",
+		"name": "VisionForge API",
+		"description": "Complete API collection for VisionForge platform - synthetic data generation, YOLO model training, and computer vision workflows.\n\n## Authentication Flow\n\n1. Register a new user\n2. Login to get access_token and refresh_token\n3. Use access_token in Authorization header for all protected endpoints\n4. Refresh token when access_token expires\n\n## Variables\n\nSet these collection variables:\n- `base_url`: API base URL (default: http://localhost:8001)\n- `access_token`: Automatically set after login\n- `refresh_token`: Automatically set after login\n- `user_email`: Your test user email\n- `user_password`: Your test user password\n- `project_id`: Set after uploading a project\n- `job_id`: Set after creating a job",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"auth": {

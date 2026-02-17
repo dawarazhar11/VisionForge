@@ -28,7 +28,7 @@ def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "service": "YOLO Assembly Vision API",
+        "service": "VisionForge API",
         "version": "0.1.0"
     }
 

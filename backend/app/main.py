@@ -26,7 +26,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     description="""
-## YOLO Assembly Vision API
+## VisionForge API
 
 Complete backend API for synthetic data generation, YOLO model training, and computer vision workflows.
 
@@ -85,7 +85,7 @@ Headers: Authorization: Bearer eyJ...
 * **train**: Train YOLO model on generated dataset
     """,
     contact={
-        "name": "YOLO Assembly Vision Team",
+        "name": "VisionForge Team",
         "email": "support@yolo-vision.example.com",
     },
     license_info={

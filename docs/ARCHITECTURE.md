@@ -1,4 +1,4 @@
-# YOLO Assembly Vision - Technical Architecture
+# VisionForge - Technical Architecture
 
 **Last Updated:** 2025-12-03
 **Version:** 1.0
@@ -8,7 +8,7 @@
 
 ## 🏛️ System Architecture Overview
 
-This document outlines the technical architecture, design decisions, and rationale for the YOLO Assembly Vision platform.
+This document outlines the technical architecture, design decisions, and rationale for the VisionForge platform.
 
 ## 🎯 Multi-Platform Support Strategy
 

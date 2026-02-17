@@ -32,7 +32,7 @@ cd "H:\Yolo Computer Vision\Baseline\backend"
 
 Verify it's working:
 - Open browser: http://localhost:8002
-- You should see: `{"name":"YOLO Assembly Vision API","version":"0.1.0","status":"running","docs":"/docs"}`
+- You should see: `{"name":"VisionForge API","version":"0.1.0","status":"running","docs":"/docs"}`
 
 #### Solution 2: Check API Documentation
 Visit http://localhost:8002/docs to see available endpoints:

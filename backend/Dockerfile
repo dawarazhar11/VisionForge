@@ -1,4 +1,4 @@
-# Multi-stage build for YOLO Assembly Vision Backend
+# Multi-stage build for VisionForge Backend
 FROM python:3.11-slim AS base
 
 # Set environment variables

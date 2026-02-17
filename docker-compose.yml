@@ -65,7 +65,7 @@ services:
       - "8002:8002"
     environment:
       # Application
-      APP_NAME: "YOLO Assembly Vision API"
+      APP_NAME: "VisionForge API"
       APP_VERSION: "0.1.0"
       DEBUG: "True"
       API_PREFIX: "/api/v1"

@@ -1,6 +1,6 @@
 # Docker Deployment Guide
 
-This guide explains how to deploy the YOLO Assembly Vision API using Docker and Docker Compose.
+This guide explains how to deploy the VisionForge API using Docker and Docker Compose.
 
 ## Prerequisites
 

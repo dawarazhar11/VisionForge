@@ -156,8 +156,8 @@ The system detects 7 mechanical component classes in assembly scenes:
 
 ```bash
 # Clone the repository
-git clone https://github.com/dawarazhar11/yolo-computer-vision-baseline.git
-cd yolo-computer-vision-baseline
+git clone https://github.com/dawarazhar11/VisionForge.git
+cd VisionForge
 
 # Start all services (API, PostgreSQL, Redis, Celery)
 docker compose up -d
@@ -280,4 +280,4 @@ This project is licensed under the MIT License -- see the [LICENSE](LICENSE) fil
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=dawarazhar11/yolo-computer-vision-baseline&type=Date)](https://star-history.com/#dawarazhar11/yolo-computer-vision-baseline&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=dawarazhar11/VisionForge&type=Date)](https://star-history.com/#dawarazhar11/VisionForge&Date)
