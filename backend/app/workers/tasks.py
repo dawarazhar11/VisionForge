@@ -16,7 +16,7 @@ from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.models.training_job import TrainingJob
 from app.models.assembly_project import AssemblyProject
-from app.models.part_feature import PartFeature
+from app.models.part_feature import PartFeature, FEATURE_CLASS_ORDER
 from app.models.user import User
 from app.blender.runner import BlenderRunner
 from app.blender.config import BlenderRenderConfig, get_blender_path
@@ -475,6 +475,22 @@ def train_yolo_model(
             return {"status": "failed", "error": error_msg}
 
         logger.info(f"Found dataset at: {dataset_dir}")
+
+        # Derive class names from PartFeature records for this project
+        features = (
+            self.db.query(PartFeature)
+            .filter(PartFeature.project_id == project_id)
+            .all()
+        )
+        if features:
+            present_indices = sorted({f.class_index for f in features})
+            dynamic_class_names = [
+                FEATURE_CLASS_ORDER[i] for i in present_indices if i < len(FEATURE_CLASS_ORDER)
+            ]
+            config = {**config, "class_names": dynamic_class_names}
+            logger.info(f"Using dynamic class names from part features: {dynamic_class_names}")
+        else:
+            logger.warning(f"No PartFeature records for project {project_id}; using config class_names")
 
         # Validate training configuration
         try:
