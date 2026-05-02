@@ -16,95 +16,82 @@ DEFAULT_BLENDER_PATH = r"C:\Program Files\Blender Foundation\Blender 4.5\blender
 
 def find_blender_executable() -> Optional[str]:
     """
-    Auto-detect Blender installation path on the system.
+    Auto-detect Blender installation path on the system (macOS, Windows, Linux).
 
-    Searches in the following order:
+    Search order:
     1. BLENDER_PATH environment variable
-    2. PATH environment variable
-    3. Common Windows installation directories
-    4. Windows Registry (if on Windows)
-
-    Returns:
-        Path to blender.exe if found, None otherwise
+    2. System PATH
+    3. macOS: /Applications/Blender.app bundle
+    4. Windows: Program Files + Registry
+    5. Linux: common install prefixes
     """
-    # 1. Check BLENDER_PATH environment variable
+    # 1. BLENDER_PATH env var
     env_path = os.environ.get("BLENDER_PATH")
     if env_path and os.path.exists(env_path):
         logger.info(f"Found Blender via BLENDER_PATH: {env_path}")
         return env_path
 
-    # 2. Check if blender is in PATH
+    # 2. System PATH
     blender_in_path = shutil.which("blender")
     if blender_in_path:
         logger.info(f"Found Blender in PATH: {blender_in_path}")
         return blender_in_path
 
-    # 3. Check common Windows installation paths
+    # 3. macOS .app bundle
+    if sys.platform == "darwin":
+        mac_candidates = [
+            Path("/Applications/Blender.app/Contents/MacOS/Blender"),
+            Path.home() / "Applications" / "Blender.app" / "Contents" / "MacOS" / "Blender",
+        ]
+        for candidate in mac_candidates:
+            if candidate.exists():
+                logger.info(f"Found Blender (macOS): {candidate}")
+                return str(candidate)
+
+    # 4. Windows
     if sys.platform == "win32":
-        common_paths = [
-            # Program Files locations
+        win_bases = [
             r"C:\Program Files\Blender Foundation",
             r"C:\Program Files (x86)\Blender Foundation",
-            # User AppData locations
             Path.home() / "AppData" / "Local" / "Programs" / "Blender Foundation",
-            # Scoop installation
             Path.home() / "scoop" / "apps" / "blender",
-            # Chocolatey installation
             r"C:\ProgramData\chocolatey\lib\blender\tools",
         ]
 
-        for base_path in common_paths:
+        def _version_key(p):
+            try:
+                parts = p.name.replace("Blender ", "").strip().split(".")
+                return tuple(int(x) for x in parts)
+            except (ValueError, AttributeError):
+                return (0,)
+
+        for base_path in win_bases:
             base = Path(base_path)
             if not base.exists():
                 continue
-
-            # Search for blender.exe in subdirectories with version-aware sorting
-            # Extract version numbers for proper sorting (5.0 > 4.2 > 4.0 > 3.4)
-            version_dirs = list(base.glob("Blender*"))
-
-            def extract_version(path):
-                """Extract version number from 'Blender X.Y' directory name."""
-                try:
-                    # Extract "X.Y" from "Blender X.Y"
-                    version_str = path.name.replace("Blender ", "").strip()
-                    # Split into major.minor and convert to tuple of ints
-                    parts = version_str.split(".")
-                    return tuple(int(p) for p in parts)
-                except (ValueError, AttributeError):
-                    # If parsing fails, return (0,) to sort these last
-                    return (0,)
-
-            # Sort by version number in descending order (newest first)
-            version_dirs_sorted = sorted(version_dirs, key=extract_version, reverse=True)
-
-            for version_dir in version_dirs_sorted:
+            for version_dir in sorted(base.glob("Blender*"), key=_version_key, reverse=True):
                 blender_exe = version_dir / "blender.exe"
                 if blender_exe.exists():
-                    logger.info(f"Found Blender at: {blender_exe}")
+                    logger.info(f"Found Blender (Windows): {blender_exe}")
                     return str(blender_exe)
 
-        # 4. Check Windows Registry (Blender installer creates registry keys)
         try:
             import winreg
-
-            registry_paths = [
+            for hkey, reg_path in [
                 (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\BlenderFoundation"),
                 (winreg.HKEY_CURRENT_USER, r"SOFTWARE\BlenderFoundation"),
-            ]
-
-            for hkey, reg_path in registry_paths:
+            ]:
                 try:
                     with winreg.OpenKey(hkey, reg_path) as key:
-                        # Enumerate subkeys (version numbers)
                         i = 0
                         while True:
                             try:
-                                version_key = winreg.EnumKey(key, i)
-                                with winreg.OpenKey(hkey, f"{reg_path}\\{version_key}") as version:
-                                    install_path, _ = winreg.QueryValueEx(version, "InstallDir")
+                                vk = winreg.EnumKey(key, i)
+                                with winreg.OpenKey(hkey, f"{reg_path}\\{vk}") as v:
+                                    install_path, _ = winreg.QueryValueEx(v, "InstallDir")
                                     blender_exe = Path(install_path) / "blender.exe"
                                     if blender_exe.exists():
-                                        logger.info(f"Found Blender via Registry: {blender_exe}")
+                                        logger.info(f"Found Blender (Registry): {blender_exe}")
                                         return str(blender_exe)
                                 i += 1
                             except OSError:
@@ -112,11 +99,21 @@ def find_blender_executable() -> Optional[str]:
                 except FileNotFoundError:
                     continue
         except ImportError:
-            logger.debug("winreg module not available (non-Windows platform)")
-        except Exception as e:
-            logger.debug(f"Registry search failed: {e}")
+            pass
 
-    # Not found
+    # 5. Linux common paths
+    if sys.platform.startswith("linux"):
+        linux_candidates = [
+            Path("/usr/bin/blender"),
+            Path("/usr/local/bin/blender"),
+            Path("/opt/blender/blender"),
+            Path.home() / ".local" / "bin" / "blender",
+        ]
+        for candidate in linux_candidates:
+            if candidate.exists():
+                logger.info(f"Found Blender (Linux): {candidate}")
+                return str(candidate)
+
     logger.warning("Blender executable not found in common locations")
     return None
 
@@ -141,21 +138,12 @@ def get_blender_path() -> str:
         logger.info(f"Using default Blender path: {DEFAULT_BLENDER_PATH}")
         return DEFAULT_BLENDER_PATH
 
-    # Nothing found - provide helpful error message
     error_msg = (
-        "Blender executable not found. Please install Blender or set the BLENDER_PATH environment variable.\n\n"
-        "Download Blender: https://www.blender.org/download/\n\n"
-        "Or set environment variable:\n"
-        "  Windows (PowerShell): $env:BLENDER_PATH = 'C:\\Path\\To\\blender.exe'\n"
-        "  Windows (CMD): set BLENDER_PATH=C:\\Path\\To\\blender.exe\n"
-        "  Linux/Mac: export BLENDER_PATH=/path/to/blender\n\n"
-        f"Searched locations:\n"
-        f"  - BLENDER_PATH environment variable\n"
-        f"  - System PATH\n"
-        f"  - C:\\Program Files\\Blender Foundation\n"
-        f"  - User AppData directory\n"
-        f"  - Windows Registry\n"
-        f"  - Default path: {DEFAULT_BLENDER_PATH}"
+        "Blender executable not found. Install Blender or set BLENDER_PATH.\n"
+        "  macOS:   export BLENDER_PATH=/Applications/Blender.app/Contents/MacOS/Blender\n"
+        "  Windows: set BLENDER_PATH=C:\\Path\\To\\blender.exe\n"
+        "  Linux:   export BLENDER_PATH=/usr/bin/blender\n"
+        "Download: https://www.blender.org/download/"
     )
 
     logger.error(error_msg)

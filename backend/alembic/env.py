@@ -23,7 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.database import Base
-from app.models import User, AssemblyProject, TrainingJob, Model
+from app.models import User, AssemblyProject, TrainingJob, Model, PartFeature
 
 target_metadata = Base.metadata
 

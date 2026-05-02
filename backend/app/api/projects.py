@@ -35,7 +35,7 @@ router = APIRouter()
 
 @router.post("/upload", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 async def upload_project(
-    file: UploadFile = File(..., description="3D model file (.blend, .obj, .stl, .fbx)"),
+    file: UploadFile = File(..., description="3D model file (.step, .stp, .blend, .obj, .stl, .fbx)"),
     name: str = Form(..., description="Project name"),
     description: Optional[str] = Form(None, description="Project description"),
     db: Session = Depends(get_db),
