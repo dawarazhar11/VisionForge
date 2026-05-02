@@ -531,6 +531,100 @@ class ApiService {
     }
   }
 
+  /// Trigger server-side export of a trained model to the given format.
+  /// Returns the export_path from the server response.
+  Future<Map<String, dynamic>> exportModel(
+    String token,
+    String modelId, {
+    String format = 'tflite',
+    int imgsz = 640,
+    bool optimize = false,
+    bool half = false,
+    bool int8 = false,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.models}/$modelId/export'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({
+        'format': format,
+        'imgsz': imgsz,
+        'optimize': optimize,
+        'half': half,
+        'int8': int8,
+        'simplify': true,
+        'batch': 1,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception('Export failed (${response.statusCode}): ${response.body}');
+  }
+
+  /// Download an already-exported model file (TFLite, ONNX, etc.) to savePath.
+  Future<void> downloadExportedModel(
+    String token,
+    String modelId,
+    String format,
+    String savePath, {
+    Function(int received, int total)? onProgress,
+  }) async {
+    await _dio.download(
+      '${ApiConfig.baseUrl}${ApiConfig.models}/$modelId/export/$format/download',
+      savePath,
+      options: Options(headers: {'Authorization': 'Bearer $token'}),
+      onReceiveProgress: onProgress,
+    );
+  }
+
+  /// Download the labels .txt file for a trained model.
+  Future<void> downloadModelLabels(
+    String token,
+    String modelId,
+    String savePath,
+  ) async {
+    await _dio.download(
+      '${ApiConfig.baseUrl}${ApiConfig.models}/$modelId/labels',
+      savePath,
+      options: Options(headers: {'Authorization': 'Bearer $token'}),
+    );
+  }
+
+  /// Full TFLite package download: export → download .tflite → download labels.txt.
+  ///
+  /// Saves model as [modelDir]/model.tflite and labels as [modelDir]/labels.txt.
+  /// Returns the tflite file path on success.
+  Future<String> downloadTFLitePackage(
+    String token,
+    String modelId,
+    String modelDir, {
+    Function(String stage, int received, int total)? onProgress,
+  }) async {
+    final dir = Directory(modelDir);
+    await dir.create(recursive: true);
+
+    // 1 — trigger export
+    onProgress?.call('exporting', 0, 1);
+    final exportResult = await exportModel(token, modelId, format: 'tflite');
+    if (exportResult['success'] != true) {
+      throw Exception('Export failed: ${exportResult['error_message']}');
+    }
+
+    // 2 — download TFLite file
+    final tflitePath = '$modelDir/model.tflite';
+    await downloadExportedModel(
+      token, modelId, 'tflite', tflitePath,
+      onProgress: (r, t) => onProgress?.call('downloading_model', r, t),
+    );
+
+    // 3 — download labels
+    final labelsPath = '$modelDir/labels.txt';
+    await downloadModelLabels(token, modelId, labelsPath);
+
+    return tflitePath;
+  }
+
   /// Dispose client
   void dispose() {
     _client.close();
