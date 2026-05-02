@@ -22,15 +22,14 @@ from loguru import logger
 
 try:
     import cadquery as cq
-    from OCC.Core.BRepAdaptor import BRepAdaptor_Surface, BRepAdaptor_Curve
-    from OCC.Core.GeomAbs import (
-        GeomAbs_Cylinder, GeomAbs_Plane, GeomAbs_Circle, GeomAbs_Torus,
-    )
-    from OCC.Core.TopAbs import TopAbs_REVERSED
-    from OCC.Core.BRepBndLib import brepbndlib
-    from OCC.Core.Bnd import Bnd_Box
-    from OCC.Core.GProp import GProp_GProps
-    from OCC.Core.BRepGProp import brepgprop
+    # cadquery bundles OpenCASCADE as 'OCP' (not 'OCC')
+    from OCP.BRepAdaptor import BRepAdaptor_Surface
+    from OCP.GeomAbs import GeomAbs_Cylinder, GeomAbs_Plane
+    from OCP.TopAbs import TopAbs_REVERSED
+    from OCP.BRepBndLib import BRepBndLib
+    from OCP.Bnd import Bnd_Box
+    from OCP.GProp import GProp_GProps
+    from OCP.BRepGProp import BRepGProp
     CADQUERY_AVAILABLE = True
 except ImportError:
     CADQUERY_AVAILABLE = False
@@ -163,17 +162,19 @@ class STEPParser:
 
         try:
             logger.info(f"Loading STEP: {step_path}")
-            shape = cq.importers.importStep(str(step_path))
+            workplane = cq.importers.importStep(str(step_path))
+            # importStep returns a Workplane; .val() gives the underlying Shape
+            shape = workplane.val()
 
             logger.info("Running feature recognition …")
             recognizer = _FeatureRecognizer()
             features = recognizer.recognize(shape)
 
-            # Export STL for Blender
+            # Export STL for Blender (export from Workplane to preserve compound)
             output_dir = Path(output_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
             stl_path = output_dir / f"{step_path.stem}.stl"
-            cq.exporters.export(shape, str(stl_path))
+            cq.exporters.export(workplane, str(stl_path))
             logger.info(f"STL exported: {stl_path}")
 
             # Build ordered class name list (only types actually present)
@@ -341,7 +342,7 @@ class _FeatureRecognizer:
             axis_dir = adaptor.Cylinder().Axis().Direction()
 
             bbox = Bnd_Box()
-            brepbndlib.Add(face.wrapped, bbox)
+            BRepBndLib.Add_s(face.wrapped, bbox)
             xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
 
             depth = (
@@ -356,7 +357,7 @@ class _FeatureRecognizer:
     def _face_area(self, face) -> float:
         try:
             props = GProp_GProps()
-            brepgprop.SurfaceProperties(face.wrapped, props)
+            BRepGProp.SurfaceProperties_s(face.wrapped, props)
             return props.Mass()
         except Exception:
             try:
