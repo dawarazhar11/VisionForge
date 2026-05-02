@@ -23,6 +23,7 @@ from app.blender.config import BlenderRenderConfig, get_blender_path
 from app.services.webhooks import webhook_service
 from app.services.storage import STEP_EXTENSIONS
 from app.services.step_parser import STEPParser
+from app.config import get_settings
 
 
 class DatabaseTask(Task):
@@ -231,7 +232,7 @@ def render_synthetic_data(
             return {"status": "failed", "error": error_msg}
 
         output_dir = (
-            Path("datasets") / str(project_id) / f"render_{job_id}"
+            Path(get_settings().DATASET_DIR) / str(project_id) / f"render_{job_id}"
         ).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -506,7 +507,7 @@ def train_yolo_model(
             return {"status": "failed", "error": error_msg}
 
         # Create output directory for trained models
-        output_base = Path("models")
+        output_base = Path(get_settings().MODEL_DIR)
         output_dir = output_base / str(project_id) / f"train_{job_id}"
         output_dir.mkdir(parents=True, exist_ok=True)
 
