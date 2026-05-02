@@ -14,8 +14,11 @@ from app.config import settings
 
 
 # Allowed file types for 3D models
-ALLOWED_EXTENSIONS = {".blend", ".obj", ".stl", ".fbx"}
+ALLOWED_EXTENSIONS = {".blend", ".obj", ".stl", ".fbx", ".step", ".stp"}
 MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB in bytes
+
+# STEP formats that go through the feature-recognition pipeline
+STEP_EXTENSIONS = {".step", ".stp"}
 
 
 class StorageService:

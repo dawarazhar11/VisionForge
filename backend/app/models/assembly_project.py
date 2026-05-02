@@ -37,7 +37,12 @@ class AssemblyProject(Base):
     jobs = relationship(
         "TrainingJob",
         back_populates="project",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+    )
+    features = relationship(
+        "PartFeature",
+        back_populates="project",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self):
