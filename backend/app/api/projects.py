@@ -27,6 +27,8 @@ from app.schemas.project import (
     ProjectUpdate,
     ProjectResponse,
     ProjectListResponse,
+    PartFeatureResponse,
+    PartFeatureListResponse,
 )
 from app.services.storage import storage_service
 
@@ -381,4 +383,53 @@ def download_project_file(
         path=str(file_path),
         filename=f"{project.name}{project.file_type}",
         media_type="application/octet-stream",
+    )
+
+
+@router.get("/{project_id}/features", response_model=PartFeatureListResponse)
+def get_project_features(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Return all recognized manufacturing features for a project."""
+    from app.models.part_feature import PartFeature, FEATURE_CLASS_ORDER
+
+    project = db.query(AssemblyProject).filter(AssemblyProject.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if project.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+    features = (
+        db.query(PartFeature)
+        .filter(PartFeature.project_id == project_id)
+        .order_by(PartFeature.class_index, PartFeature.created_at)
+        .all()
+    )
+
+    present_indices = sorted({f.class_index for f in features})
+    class_names = [FEATURE_CLASS_ORDER[i] for i in present_indices if i < len(FEATURE_CLASS_ORDER)]
+
+    feature_responses = [
+        PartFeatureResponse(
+            id=f.id,
+            feature_type=f.feature_type,
+            class_index=f.class_index,
+            center=[f.center_x, f.center_y, f.center_z],
+            normal=[f.normal_x, f.normal_y, f.normal_z],
+            radius=f.radius,
+            depth=f.depth,
+            width=f.width,
+            length=f.length,
+            properties=f.properties_json or {},
+        )
+        for f in features
+    ]
+
+    return PartFeatureListResponse(
+        project_id=project_id,
+        features=feature_responses,
+        total=len(feature_responses),
+        class_names=class_names,
     )
