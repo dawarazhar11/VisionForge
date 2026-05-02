@@ -81,6 +81,10 @@ class YoloService {
   List<String> _labels = [];
   bool _isInitialized = false;
 
+  // True when output shape is [1, 4+N, 8400] (YOLOv8/v11 column-major)
+  // False when output shape is [1, 8400, 5+N] (YOLOv5 row-major)
+  bool _isYolov8Format = false;
+
   // Model configuration
   static const int inputSize = 640;
   static const double confidenceThreshold = 0.5;
@@ -89,31 +93,55 @@ class YoloService {
   bool get isInitialized => _isInitialized;
   List<String> get labels => _labels;
 
-  /// Initialize the YOLO model
+  /// Initialize the YOLO model from a filesystem path.
   Future<void> initialize({
     required String modelPath,
     List<String>? labels,
   }) async {
     try {
-      // Load model
-      _interpreter = await Interpreter.fromAsset(modelPath);
+      // Load model from file (not a bundled asset)
+      _interpreter = await Interpreter.fromFile(File(modelPath));
 
-      // Load labels
+      // Detect output format from tensor shape
+      final outputShape = _interpreter!.getOutputTensor(0).shape;
+      // YOLOv8/v11: [1, features, 8400] → features dimension is smaller
+      // YOLOv5:     [1, 8400, 5+classes] → detections dimension comes first
+      _isYolov8Format = outputShape.length == 3 && outputShape[1] < outputShape[2];
+
+      // Load labels: explicit list > txt file alongside model > empty
       if (labels != null) {
         _labels = labels;
       } else {
-        // Default COCO labels (you should replace with your actual labels)
-        _labels = _getDefaultLabels();
+        _labels = await _loadLabelsFromFile(modelPath);
       }
 
       _isInitialized = true;
-      print('YOLO model initialized successfully');
+      print('YOLO model initialized: $_isYolov8Format ? YOLOv8 : YOLOv5 format');
       print('Input shape: ${_interpreter!.getInputTensor(0).shape}');
-      print('Output shape: ${_interpreter!.getOutputTensor(0).shape}');
+      print('Output shape: $outputShape');
+      print('Labels (${_labels.length}): $_labels');
     } catch (e) {
       print('Failed to initialize YOLO model: $e');
       rethrow;
     }
+  }
+
+  /// Try to load labels from a .txt file next to the model file.
+  Future<List<String>> _loadLabelsFromFile(String modelPath) async {
+    final base = modelPath.replaceAll(RegExp(r'\.[^.]+$'), '');
+    for (final candidate in ['$base.txt', '${File(modelPath).parent.path}/labels.txt']) {
+      final f = File(candidate);
+      if (await f.exists()) {
+        final lines = await f.readAsLines();
+        final loaded = lines.map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+        if (loaded.isNotEmpty) {
+          print('Loaded ${loaded.length} labels from $candidate');
+          return loaded;
+        }
+      }
+    }
+    print('No label file found alongside $modelPath; class indices will be shown');
+    return [];
   }
 
   /// Alias for initialize() - for backward compatibility
@@ -133,13 +161,9 @@ class YoloService {
     }
 
     try {
-      // Convert CameraImage to Image
       final image = _convertCameraImage(cameraImage);
-      if (image == null) {
-        return [];
-      }
+      if (image == null) return [];
 
-      // Resize to input size
       final resized = img.copyResize(
         image,
         width: inputSize,
@@ -147,16 +171,9 @@ class YoloService {
         interpolation: img.Interpolation.linear,
       );
 
-      // Preprocess image
       final input = _preprocessImage(resized);
-
-      // Run inference
       final output = await _runInference(input);
-
-      // Postprocess results
-      final detections = _postprocessOutput(output);
-
-      return detections;
+      return _postprocessOutput(output, confidenceThreshold ?? YoloService.confidenceThreshold);
     } catch (e) {
       print('Detection error: $e');
       return [];
@@ -170,14 +187,10 @@ class YoloService {
     }
 
     try {
-      // Load and decode image
       final bytes = await File(imagePath).readAsBytes();
       final image = img.decodeImage(bytes);
-      if (image == null) {
-        throw Exception('Failed to decode image');
-      }
+      if (image == null) throw Exception('Failed to decode image');
 
-      // Resize to input size
       final resized = img.copyResize(
         image,
         width: inputSize,
@@ -185,16 +198,9 @@ class YoloService {
         interpolation: img.Interpolation.linear,
       );
 
-      // Preprocess image
       final input = _preprocessImage(resized);
-
-      // Run inference
       final output = await _runInference(input);
-
-      // Postprocess results
-      final detections = _postprocessOutput(output);
-
-      return detections;
+      return _postprocessOutput(output, confidenceThreshold ?? YoloService.confidenceThreshold);
     } catch (e) {
       print('Detection error: $e');
       rethrow;
@@ -266,8 +272,6 @@ class YoloService {
     for (int y = 0; y < inputSize; y++) {
       for (int x = 0; x < inputSize; x++) {
         final pixel = image.getPixel(x, y);
-
-        // Normalize to [0, 1] and convert to RGB order
         input[pixelIndex++] = pixel.r / 255.0;
         input[pixelIndex++] = pixel.g / 255.0;
         input[pixelIndex++] = pixel.b / 255.0;
@@ -277,79 +281,103 @@ class YoloService {
     return input;
   }
 
-  /// Run inference
+  /// Run inference and return raw output as [rows][cols].
+  ///
+  /// For YOLOv8 [1, features, 8400] the returned list is [features][8400].
+  /// For YOLOv5 [1, 8400, 5+N]   the returned list is [8400][5+N].
   Future<List<List<double>>> _runInference(Float32List input) async {
-    // Reshape input
     final inputTensor = input.reshape([1, inputSize, inputSize, 3]);
 
-    // Prepare output buffer
-    // YOLO output shape: [1, num_detections, 85] for COCO
-    // [x, y, w, h, confidence, class0_prob, class1_prob, ...]
     final outputShape = _interpreter!.getOutputTensor(0).shape;
-    final numDetections = outputShape[1];
-    final numValues = outputShape[2];
+    final dim1 = outputShape[1];
+    final dim2 = outputShape[2];
 
     final output = List.generate(
       1,
-      (_) => List.generate(
-        numDetections,
-        (_) => List<double>.filled(numValues, 0.0),
-      ),
+      (_) => List.generate(dim1, (_) => List<double>.filled(dim2, 0.0)),
     );
 
-    // Run inference
     _interpreter!.run(inputTensor, output);
 
-    return output[0];
+    return output[0]; // [dim1][dim2]
   }
 
-  /// Postprocess model output to detections
-  List<DetectionResult> _postprocessOutput(List<List<double>> output) {
+  /// Postprocess model output to detections.
+  ///
+  /// Handles both:
+  ///   YOLOv8/v11: output[features][detections] → features = 4 + num_classes, no objectness
+  ///   YOLOv5:     output[detections][5+classes] → col 4 is objectness score
+  List<DetectionResult> _postprocessOutput(
+    List<List<double>> output,
+    double threshold,
+  ) {
     final List<DetectionResult> detections = [];
 
-    for (final detection in output) {
-      // YOLO output format: [x, y, w, h, confidence, class_probs...]
-      final confidence = detection[4];
+    if (_isYolov8Format) {
+      // output is [4+numClasses][8400]
+      final int numFeatures = output.length;       // 4 + numClasses
+      final int numDetections = output[0].length;  // 8400
+      final int numClasses = numFeatures - 4;
 
-      if (confidence < confidenceThreshold) {
-        continue;
-      }
-
-      // Find class with highest probability
-      int classId = 0;
-      double maxProb = detection[5];
-      for (int i = 6; i < detection.length; i++) {
-        if (detection[i] > maxProb) {
-          maxProb = detection[i];
-          classId = i - 5;
+      for (int d = 0; d < numDetections; d++) {
+        // Find best class
+        int bestClass = 0;
+        double bestScore = output[4][d];
+        for (int c = 1; c < numClasses; c++) {
+          final s = output[4 + c][d];
+          if (s > bestScore) {
+            bestScore = s;
+            bestClass = c;
+          }
         }
+
+        if (bestScore < threshold) continue;
+
+        detections.add(DetectionResult(
+          x: output[0][d],
+          y: output[1][d],
+          width: output[2][d],
+          height: output[3][d],
+          confidence: bestScore,
+          classId: bestClass,
+          className: bestClass < _labels.length ? _labels[bestClass] : 'class_$bestClass',
+        ));
       }
+    } else {
+      // YOLOv5: output is [8400][5+numClasses]
+      for (final det in output) {
+        final objectness = det[4];
+        if (objectness < threshold) continue;
 
-      // Final confidence = objectness * class_probability
-      final finalConfidence = confidence * maxProb;
+        int bestClass = 0;
+        double bestProb = det[5];
+        for (int i = 6; i < det.length; i++) {
+          if (det[i] > bestProb) {
+            bestProb = det[i];
+            bestClass = i - 5;
+          }
+        }
 
-      if (finalConfidence < confidenceThreshold) {
-        continue;
+        final finalConf = objectness * bestProb;
+        if (finalConf < threshold) continue;
+
+        detections.add(DetectionResult(
+          x: det[0],
+          y: det[1],
+          width: det[2],
+          height: det[3],
+          confidence: finalConf,
+          classId: bestClass,
+          className: bestClass < _labels.length ? _labels[bestClass] : 'class_$bestClass',
+        ));
       }
-
-      detections.add(DetectionResult(
-        x: detection[0],
-        y: detection[1],
-        width: detection[2],
-        height: detection[3],
-        confidence: finalConfidence,
-        classId: classId,
-        className: classId < _labels.length ? _labels[classId] : 'unknown',
-      ));
     }
 
-    // Apply Non-Maximum Suppression
     return _nonMaximumSuppression(detections);
   }
 
   /// Apply Non-Maximum Suppression to remove overlapping boxes
   List<DetectionResult> _nonMaximumSuppression(List<DetectionResult> detections) {
-    // Sort by confidence (descending)
     detections.sort((a, b) => b.confidence.compareTo(a.confidence));
 
     final List<DetectionResult> result = [];
@@ -384,9 +412,7 @@ class YoloService {
     final interRight = aRight < bRight ? aRight : bRight;
     final interBottom = aBottom < bBottom ? aBottom : bBottom;
 
-    if (interRight < interLeft || interBottom < interTop) {
-      return 0.0;
-    }
+    if (interRight < interLeft || interBottom < interTop) return 0.0;
 
     final interArea = (interRight - interLeft) * (interBottom - interTop);
     final aArea = a.width * a.height;
@@ -394,25 +420,6 @@ class YoloService {
     final unionArea = aArea + bArea - interArea;
 
     return interArea / unionArea;
-  }
-
-  /// Get default COCO labels
-  List<String> _getDefaultLabels() {
-    return [
-      'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train',
-      'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign',
-      'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
-      'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag',
-      'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite',
-      'baseball bat', 'baseball glove', 'skateboard', 'surfboard',
-      'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon',
-      'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot',
-      'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch', 'potted plant',
-      'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote',
-      'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink',
-      'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear',
-      'hair drier', 'toothbrush'
-    ];
   }
 
   /// Dispose resources
