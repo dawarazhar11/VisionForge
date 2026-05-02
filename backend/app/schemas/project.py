@@ -2,7 +2,7 @@
 Pydantic schemas for assembly projects.
 """
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 from pydantic import BaseModel, Field
 
@@ -55,3 +55,28 @@ class ProjectListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class PartFeatureResponse(BaseModel):
+    """Schema for a single recognized manufacturing feature."""
+    id: UUID
+    feature_type: str
+    class_index: int
+    center: List[float]
+    normal: List[float]
+    radius: Optional[float] = None
+    depth: Optional[float] = None
+    width: Optional[float] = None
+    length: Optional[float] = None
+    properties: Dict[str, Any] = {}
+
+    class Config:
+        from_attributes = True
+
+
+class PartFeatureListResponse(BaseModel):
+    """Schema for project feature list response."""
+    project_id: UUID
+    features: List[PartFeatureResponse]
+    total: int
+    class_names: List[str]

@@ -2,6 +2,7 @@
 Celery tasks for async job processing.
 """
 import os
+import json
 import time
 import asyncio
 from pathlib import Path
@@ -20,6 +21,8 @@ from app.models.user import User
 from app.blender.runner import BlenderRunner
 from app.blender.config import BlenderRenderConfig, get_blender_path
 from app.services.webhooks import webhook_service
+from app.services.storage import STEP_EXTENSIONS
+from app.services.step_parser import STEPParser
 
 
 class DatabaseTask(Task):
@@ -205,145 +208,202 @@ def render_synthetic_data(
     logger.info(f"Rendering task started for project {project_id}")
 
     try:
-        # Update job status
         update_job_status(self.db, job_id, "RUNNING", progress=0)
 
-        # Get project from database
         project = self.db.query(AssemblyProject).filter(
             AssemblyProject.id == project_id
         ).first()
-
         if not project:
             error_msg = f"Project {project_id} not found"
-            logger.error(error_msg)
-            update_job_status(
-                self.db, job_id, "FAILED", progress=0,
-                result_data={"error": error_msg}
-            )
+            update_job_status(self.db, job_id, "FAILED", result_data={"error": error_msg})
             return {"status": "failed", "error": error_msg}
 
-        # Ensure project file exists
         if not os.path.exists(project.file_path):
             error_msg = f"Project file not found: {project.file_path}"
-            logger.error(error_msg)
-            update_job_status(
-                self.db, job_id, "FAILED", progress=0,
-                result_data={"error": error_msg}
-            )
+            update_job_status(self.db, job_id, "FAILED", result_data={"error": error_msg})
             return {"status": "failed", "error": error_msg}
 
-        # Validate render configuration
         try:
             render_config = BlenderRenderConfig(**config)
         except Exception as e:
-            error_msg = f"Invalid render configuration: {str(e)}"
-            logger.error(error_msg)
-            update_job_status(
-                self.db, job_id, "FAILED", progress=0,
-                result_data={"error": error_msg}
-            )
+            error_msg = f"Invalid render configuration: {e}"
+            update_job_status(self.db, job_id, "FAILED", result_data={"error": error_msg})
             return {"status": "failed", "error": error_msg}
 
-        # Create output directory
-        output_base = Path("datasets")
-        output_dir = (output_base / str(project_id) / f"render_{job_id}").resolve()
+        output_dir = (
+            Path("datasets") / str(project_id) / f"render_{job_id}"
+        ).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"Rendering config: {render_config}")
-        logger.info(f"Output directory: {output_dir}")
-
-        # Progress callback for real-time updates
-        def progress_callback(progress: int):
-            """Update job progress in database."""
-            update_job_status(self.db, job_id, "RUNNING", progress=progress)
-            logger.info(f"Rendering progress: {progress}%")
-
-        # Initialize Blender runner with auto-detected path
         try:
             blender_path = get_blender_path()
         except FileNotFoundError as e:
-            error_msg = f"Blender not found: {str(e)}"
-            logger.error(error_msg)
-            update_job_status(
-                self.db, job_id, "FAILED", progress=0,
-                result_data={"error": error_msg}
-            )
+            error_msg = f"Blender not found: {e}"
+            update_job_status(self.db, job_id, "FAILED", result_data={"error": error_msg})
             return {"status": "failed", "error": error_msg}
 
-        runner = BlenderRunner(
-            blender_path=blender_path,
-            progress_callback=progress_callback
-        )
+        # ── Branch on file type ───────────────────────────────────────────────
+        file_ext = Path(project.file_path).suffix.lower()
+        is_step  = file_ext in STEP_EXTENSIONS
 
-        # Execute rendering
-        logger.info(f"Starting Blender render: {project.file_path}")
-        render_result = runner.render_synthetic_data(
-            blend_file_path=project.file_path,
-            output_dir=str(output_dir),
-            config=render_config,
-            project_id=UUID(project_id),
-            job_id=UUID(job_id)
-        )
-
-        # Handle rendering result
-        if render_result.success:
-            result = {
-                "project_id": project_id,
-                "output_dir": render_result.output_dir,
-                "images_generated": render_result.images_generated,
-                "labels_generated": render_result.labels_generated,
-                "status": "completed",
-            }
-
-            update_job_status(self.db, job_id, "SUCCESS", progress=100, result_data=result)
-            logger.info(f"Rendering completed successfully: {result}")
-
-            # Send webhook notification
-            send_webhook_notification(
+        if is_step:
+            render_result, extra = _run_step_pipeline(
                 db=self.db,
+                project_id=project_id,
                 job_id=job_id,
-                job_type="render",
-                status="SUCCESS",
-                result_data=result
+                file_path=project.file_path,
+                output_dir=output_dir,
+                render_config=render_config,
+                blender_path=blender_path,
+            )
+        else:
+            extra = {}
+
+            def _progress(p: int):
+                update_job_status(self.db, job_id, "RUNNING", progress=p)
+
+            runner = BlenderRunner(blender_path=blender_path, progress_callback=_progress)
+            render_result = runner.render_synthetic_data(
+                blend_file_path=project.file_path,
+                output_dir=str(output_dir),
+                config=render_config,
+                project_id=UUID(project_id),
+                job_id=UUID(job_id),
             )
 
+        # ── Handle result ─────────────────────────────────────────────────────
+        if render_result.success:
+            result = {
+                "project_id":      project_id,
+                "output_dir":      render_result.output_dir,
+                "images_generated": render_result.images_generated,
+                "labels_generated": render_result.labels_generated,
+                "status":          "completed",
+                **extra,
+            }
+            update_job_status(self.db, job_id, "SUCCESS", progress=100, result_data=result)
+            logger.info(f"Rendering completed: {result}")
+            send_webhook_notification(
+                db=self.db, job_id=job_id, job_type="render",
+                status="SUCCESS", result_data=result,
+            )
             return result
         else:
             error_msg = render_result.error_message
             logger.error(f"Rendering failed: {error_msg}")
-
             update_job_status(
                 self.db, job_id, "FAILED", progress=0,
                 result_data={
-                    "error": error_msg,
-                    "blender_log": render_result.blender_log[-500:] if render_result.blender_log else None
-                }
+                    "error":       error_msg,
+                    "blender_log": (render_result.blender_log or "")[-500:],
+                },
             )
-
-            # Send webhook notification for failure
             send_webhook_notification(
-                db=self.db,
-                job_id=job_id,
-                job_type="render",
-                status="FAILED",
-                error_message=error_msg
+                db=self.db, job_id=job_id, job_type="render",
+                status="FAILED", error_message=error_msg,
             )
-
-            return {
-                "status": "failed",
-                "error": error_msg,
-                "images_generated": render_result.images_generated
-            }
+            return {"status": "failed", "error": error_msg,
+                    "images_generated": render_result.images_generated}
 
     except Exception as e:
-        error_msg = f"Unexpected error during rendering: {str(e)}"
+        error_msg = f"Unexpected error during rendering: {e}"
         logger.exception(error_msg)
-
-        update_job_status(
-            self.db, job_id, "FAILED", progress=0,
-            result_data={"error": error_msg}
-        )
+        update_job_status(self.db, job_id, "FAILED", progress=0,
+                         result_data={"error": error_msg})
         return {"status": "failed", "error": error_msg}
+
+
+def _run_step_pipeline(
+    db: Session,
+    project_id: str,
+    job_id: str,
+    file_path: str,
+    output_dir: Path,
+    render_config: BlenderRenderConfig,
+    blender_path: str,
+) -> tuple:
+    """
+    STEP rendering sub-pipeline (module-level so Celery serialisation is clean):
+      1. Parse STEP → features + STL
+      2. Persist PartFeature records to DB
+      3. Render with generic step_render_script.py
+
+    Returns (BlenderExecutionResult, extra_result_dict).
+    """
+    from app.blender.config import BlenderExecutionResult as BER
+
+    # ── Phase 1: feature recognition (5%) ───────────────────────────────
+    update_job_status(db, job_id, "RUNNING", progress=5)
+
+    parse_dir = output_dir / "step_parse"
+    parse_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.info(f"Parsing STEP: {file_path}")
+    parse_result = STEPParser().parse(file_path, str(parse_dir))
+
+    if not parse_result.success:
+        return BER(
+            success=False, output_dir=str(output_dir),
+            images_generated=0, labels_generated=0,
+            error_message=f"STEP parse failed: {parse_result.error}",
+        ), {}
+
+    update_job_status(db, job_id, "RUNNING", progress=15)
+
+    # ── Phase 2: persist features to DB (15→30%) ────────────────────────
+    db.query(PartFeature).filter(
+        PartFeature.project_id == UUID(project_id)
+    ).delete()
+
+    for feat in parse_result.features:
+        db.add(PartFeature(
+            project_id=UUID(project_id),
+            feature_type=feat.feature_type,
+            class_index=feat.class_index,
+            center_x=feat.center_x,
+            center_y=feat.center_y,
+            center_z=feat.center_z,
+            normal_x=feat.normal_x,
+            normal_y=feat.normal_y,
+            normal_z=feat.normal_z,
+            radius=feat.radius,
+            depth=feat.depth,
+            properties_json=feat.properties,
+        ))
+    db.commit()
+    logger.info(
+        f"Saved {len(parse_result.features)} features "
+        f"({parse_result.stats.get('by_type', {})})"
+    )
+
+    # Write features.json for the Blender script
+    features_json = parse_dir / "features.json"
+    features_json.write_text(json.dumps({
+        "features":    [f.to_dict() for f in parse_result.features],
+        "class_names": parse_result.class_names,
+    }, indent=2))
+
+    update_job_status(db, job_id, "RUNNING", progress=30)
+
+    # ── Phase 3: render (30→100%) ────────────────────────────────────────
+    def _progress(p: int):
+        update_job_status(db, job_id, "RUNNING", progress=30 + int(p * 0.70))
+
+    runner = BlenderRunner(blender_path=blender_path, progress_callback=_progress)
+    render_result = runner.render_step_geometry(
+        stl_path=parse_result.stl_path,
+        features_json_path=str(features_json),
+        output_dir=str(output_dir),
+        config=render_config,
+    )
+
+    extra = {
+        "features_recognised": len(parse_result.features),
+        "feature_types":       parse_result.stats.get("by_type", {}),
+        "class_names":         parse_result.class_names,
+        "stl_path":            parse_result.stl_path,
+    }
+    return render_result, extra
 
 
 @celery_app.task(bind=True, base=DatabaseTask, name="app.workers.tasks.train_yolo_model")
