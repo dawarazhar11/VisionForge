@@ -12,7 +12,7 @@ from uuid import UUID
 from app.blender.config import (
     DEFAULT_BLENDER_PATH,
     BlenderRenderConfig,
-    BlenderExecutionResult
+    BlenderExecutionResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -24,21 +24,17 @@ class BlenderRunner:
     def __init__(
         self,
         blender_path: str = DEFAULT_BLENDER_PATH,
-        progress_callback: Optional[Callable[[int], None]] = None
+        progress_callback: Optional[Callable[[int], None]] = None,
     ):
-        """
-        Initialize Blender runner.
-
-        Args:
-            blender_path: Path to Blender executable
-            progress_callback: Optional callback function for progress updates (0-100)
-        """
         self.blender_path = blender_path
         self.progress_callback = progress_callback
 
-        # Check if Blender exists
         if not os.path.exists(blender_path):
             logger.warning(f"Blender not found at {blender_path}")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Public API
+    # ──────────────────────────────────────────────────────────────────────────
 
     def render_synthetic_data(
         self,
@@ -46,42 +42,111 @@ class BlenderRunner:
         output_dir: str,
         config: BlenderRenderConfig,
         project_id: UUID,
-        job_id: UUID
+        job_id: UUID,
     ) -> BlenderExecutionResult:
         """
-        Execute Blender rendering with progress tracking.
-
-        Args:
-            blend_file_path: Path to .blend file
-            output_dir: Directory for output images and labels
-            config: Rendering configuration
-            project_id: Project UUID
-            job_id: Job UUID for tracking
-
-        Returns:
-            BlenderExecutionResult with success status and metadata
+        Render synthetic data from a .blend / .obj / .stl / .fbx scene file.
+        Uses the hardcoded desk-scene Blender script (legacy pipeline).
         """
-        try:
-            # Ensure output directory exists
-            Path(output_dir).mkdir(parents=True, exist_ok=True)
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-            # Create Python script path for Blender execution
-            script_path = self._prepare_blender_script(
+        script_path = self._prepare_legacy_script(output_dir, config)
+
+        cmd = [
+            self.blender_path,
+            blend_file_path,
+            "--background",
+            "--python", script_path,
+        ]
+
+        return self._execute_blender(cmd, output_dir, config.num_renders)
+
+    def render_step_geometry(
+        self,
+        stl_path: str,
+        features_json_path: str,
+        output_dir: str,
+        config: BlenderRenderConfig,
+    ) -> BlenderExecutionResult:
+        """
+        Render synthetic data from a STEP-converted STL + feature map.
+        Uses the generic step_render_script.py — no blend file required.
+        """
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+        # Pass config to the Blender script via environment variables
+        env = os.environ.copy()
+        env.update({
+            "VFORGE_STL_PATH":       stl_path,
+            "VFORGE_FEATURES_JSON":  features_json_path,
+            "VFORGE_OUTPUT_DIR":     output_dir,
+            "VFORGE_NUM_RENDERS":    str(config.num_renders),
+            "VFORGE_RESOLUTION_X":   str(config.resolution_x),
+            "VFORGE_RESOLUTION_Y":   str(config.resolution_y),
+            "VFORGE_EEVEE_SAMPLES":  str(config.eevee_samples),
+        })
+
+        project_root = Path(__file__).parent.parent.parent.parent
+        script_path  = project_root / "blender" / "step_render_script.py"
+
+        if not script_path.exists():
+            return BlenderExecutionResult(
+                success=False,
                 output_dir=output_dir,
-                config=config
+                images_generated=0,
+                labels_generated=0,
+                error_message=f"step_render_script.py not found at {script_path}",
             )
 
-            # Build Blender command
+        # No blend file — Blender opens in an empty state and the script
+        # handles everything via bpy.ops.wm.stl_import.
+        cmd = [
+            self.blender_path,
+            "--background",
+            "--python", str(script_path),
+        ]
+
+        logger.info(f"render_step_geometry: STL={stl_path}  out={output_dir}")
+        return self._execute_blender(cmd, output_dir, config.num_renders, env=env)
+
+    def check_gpu_availability(self) -> dict:
+        try:
             cmd = [
                 self.blender_path,
-                blend_file_path,
                 "--background",
-                "--python", script_path
+                "--python-expr",
+                "import bpy; print(bpy.context.preferences.addons['cycles'].preferences.devices)",
             ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            output = result.stdout
+            return {
+                "available": any(x in output for x in ("CUDA", "OPTIX", "METAL")),
+                "cuda":   "CUDA"   in output,
+                "optix":  "OPTIX"  in output,
+                "metal":  "METAL"  in output,
+                "raw_output": output,
+            }
+        except Exception as e:
+            return {"available": False, "error": str(e)}
 
-            logger.info(f"Starting Blender render: {' '.join(cmd)}")
+    # ──────────────────────────────────────────────────────────────────────────
+    # Private helpers
+    # ──────────────────────────────────────────────────────────────────────────
 
-            # Execute Blender subprocess with real-time output
+    def _execute_blender(
+        self,
+        cmd: list,
+        output_dir: str,
+        num_renders: int,
+        env: Optional[dict] = None,
+    ) -> BlenderExecutionResult:
+        """
+        Run a Blender subprocess, stream its output, and parse progress.
+        Shared by both render_synthetic_data and render_step_geometry.
+        """
+        logger.info(f"Blender cmd: {' '.join(cmd)}")
+
+        try:
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -89,56 +154,62 @@ class BlenderRunner:
                 text=True,
                 bufsize=1,
                 universal_newlines=True,
-                encoding='utf-8',
-                errors='replace'  # Replace undecodable characters with �
+                encoding="utf-8",
+                errors="replace",
+                env=env,
             )
 
-            output_lines = []
-            images_generated = 0
+            output_lines   = []
+            images_written = 0
 
-            # Parse output in real-time
             for line in process.stdout:
                 output_lines.append(line)
-                logger.debug(f"Blender: {line.strip()}")
+                logger.debug(f"Blender: {line.rstrip()}")
 
-                # Parse progress from Blender output
-                progress_match = re.search(r"Rendering image (\d+)/(\d+)", line)
-                if progress_match:
-                    current = int(progress_match.group(1))
-                    total = int(progress_match.group(2))
-                    images_generated = current
-
+                # "Rendering image N/M" — legacy script format
+                m = re.search(r"Rendering image (\d+)/(\d+)", line)
+                if m:
+                    current = int(m.group(1))
+                    total   = int(m.group(2))
+                    images_written = current
                     if self.progress_callback:
-                        progress_percent = int((current / total) * 100)
-                        self.progress_callback(progress_percent)
+                        self.progress_callback(int(current / total * 100))
 
-                # Parse completion message
-                if "Rendering complete!" in line:
-                    logger.info("Blender rendering completed successfully")
+                # "Rendering image N/M" — generic STEP script format
+                m2 = re.search(r"Rendering image (\d+)/(\d+)", line)
+                if not m2:
+                    # Generic script prints "Rendering image N/M  annotations=..."
+                    m2 = re.search(r"render\s+(\d+)/(\d+)", line, re.IGNORECASE)
+                if m2 and not m:
+                    current = int(m2.group(1))
+                    total   = int(m2.group(2))
+                    images_written = current
+                    if self.progress_callback:
+                        self.progress_callback(int(current / total * 100))
 
-            # Wait for process to complete
+                if "Rendering complete" in line or "VisionForge" in line and "Done" in line:
+                    logger.info("Blender rendering completed")
+
             return_code = process.wait()
 
             if return_code != 0:
+                log_tail = "".join(output_lines[-100:])
                 error_msg = f"Blender exited with code {return_code}"
-                blender_log = "\n".join(output_lines[-100:])  # Last 100 lines
-                logger.error(f"{error_msg}\nBlender output:\n{blender_log}")
+                logger.error(f"{error_msg}\n{log_tail}")
                 return BlenderExecutionResult(
                     success=False,
                     output_dir=output_dir,
-                    images_generated=images_generated,
+                    images_generated=images_written,
                     labels_generated=0,
-                    error_message=f"{error_msg}\n\nBlender output:\n{blender_log}",
-                    blender_log=blender_log
+                    error_message=f"{error_msg}\n\n{log_tail}",
+                    blender_log=log_tail,
                 )
 
-            # Count generated files
-            images_count = len(list(Path(output_dir).glob("*.png")))
-            labels_count = len(list(Path(output_dir).glob("*.txt")))
+            out_path = Path(output_dir)
+            images_count = len(list(out_path.glob("*.png")))
+            labels_count = len(list(out_path.glob("*.txt")))
 
-            logger.info(
-                f"Rendering complete: {images_count} images, {labels_count} labels"
-            )
+            logger.info(f"Render done: {images_count} images, {labels_count} labels")
 
             return BlenderExecutionResult(
                 success=True,
@@ -146,10 +217,10 @@ class BlenderRunner:
                 images_generated=images_count,
                 labels_generated=labels_count,
                 error_message=None,
-                blender_log="\n".join(output_lines[-100:])  # Last 100 lines
+                blender_log="".join(output_lines[-100:]),
             )
 
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             error_msg = f"Blender executable not found: {self.blender_path}"
             logger.error(error_msg)
             return BlenderExecutionResult(
@@ -158,10 +229,9 @@ class BlenderRunner:
                 images_generated=0,
                 labels_generated=0,
                 error_message=error_msg,
-                blender_log=str(e)
             )
         except Exception as e:
-            error_msg = f"Blender execution failed: {str(e)}"
+            error_msg = f"Blender execution failed: {e}"
             logger.error(error_msg)
             return BlenderExecutionResult(
                 success=False,
@@ -169,87 +239,35 @@ class BlenderRunner:
                 images_generated=0,
                 labels_generated=0,
                 error_message=error_msg,
-                blender_log=str(e)
+                blender_log=str(e),
             )
 
-    def _prepare_blender_script(
+    def _prepare_legacy_script(
         self,
         output_dir: str,
-        config: BlenderRenderConfig
+        config: BlenderRenderConfig,
     ) -> str:
         """
-        Prepare Blender Python script with configuration.
-
-        Args:
-            output_dir: Output directory path
-            config: Rendering configuration
-
-        Returns:
-            Path to prepared Python script
+        Locate and configure the legacy desk-scene wrapper script.
+        Sets environment variables that eevee_api_wrapper.py reads.
         """
-        # Use the API wrapper script that configures the existing rendering script
-        # Path goes from backend/app/blender/runner.py -> project root
         project_root = Path(__file__).parent.parent.parent.parent
-        script_path = project_root / "eevee_api_wrapper.py"
+        script_path  = project_root / "blender" / "eevee_api_wrapper.py"
 
         if not script_path.exists():
-            # Fallback to direct script (will use hardcoded config)
-            logger.warning(f"Wrapper script not found at {script_path}, using direct script")
-            script_path = project_root / "eevee_desk_scene17_dualpass.py"
-
-        # Set environment variables for wrapper script
-        os.environ["BLENDER_OUTPUT_DIR"] = output_dir
-        os.environ["BLENDER_NUM_RENDERS"] = str(config.num_renders)
-        os.environ["BLENDER_RESOLUTION_X"] = str(config.resolution_x)
-        os.environ["BLENDER_RESOLUTION_Y"] = str(config.resolution_y)
-        os.environ["BLENDER_EEVEE_SAMPLES"] = str(config.eevee_samples)
-        
-        logger.info(f"Using Blender script: {script_path}")
-        logger.info(f"Render config: {config.num_renders} images @ {config.resolution_x}x{config.resolution_y}")
-
-        return str(script_path)
-
-    def check_gpu_availability(self) -> dict:
-        """
-        Check if GPU acceleration is available.
-
-        Returns:
-            Dictionary with GPU information
-        """
-        try:
-            # Run Blender to check compute devices
-            cmd = [
-                self.blender_path,
-                "--background",
-                "--python-expr",
-                "import bpy; print(bpy.context.preferences.addons['cycles'].preferences.devices)"
-            ]
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30
+            logger.warning(
+                f"Wrapper not found at {script_path}, falling back to direct script"
             )
+            script_path = project_root / "blender" / "eevee_desk_scene17_dualpass.py"
 
-            output = result.stdout
+        os.environ["BLENDER_OUTPUT_DIR"]    = output_dir
+        os.environ["BLENDER_NUM_RENDERS"]   = str(config.num_renders)
+        os.environ["BLENDER_RESOLUTION_X"]  = str(config.resolution_x)
+        os.environ["BLENDER_RESOLUTION_Y"]  = str(config.resolution_y)
+        os.environ["BLENDER_EEVEE_SAMPLES"] = str(config.eevee_samples)
 
-            # Parse GPU information from output
-            has_cuda = "CUDA" in output
-            has_optix = "OPTIX" in output
-            has_metal = "METAL" in output
-
-            return {
-                "available": has_cuda or has_optix or has_metal,
-                "cuda": has_cuda,
-                "optix": has_optix,
-                "metal": has_metal,
-                "raw_output": output
-            }
-
-        except Exception as e:
-            logger.error(f"Failed to check GPU availability: {e}")
-            return {
-                "available": False,
-                "error": str(e)
-            }
+        logger.info(
+            f"Legacy script: {script_path}  "
+            f"{config.num_renders} renders @ {config.resolution_x}x{config.resolution_y}"
+        )
+        return str(script_path)
