@@ -1,12 +1,15 @@
 """
 Jobs API endpoints - Create and manage async training jobs.
 """
+import asyncio
+import json
 import uuid
 import math
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session, joinedload
+from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session, joinedload, sessionmaker
 from sqlalchemy import func
 from loguru import logger
 
@@ -18,6 +21,49 @@ from app.schemas.job import JobCreate, JobResponse, JobListResponse
 from app.workers.tasks import echo_task, render_synthetic_data, train_yolo_model
 
 router = APIRouter()
+
+TERMINAL_JOB_STATUSES = frozenset({"SUCCESS", "FAILED", "CANCELLED"})
+SSE_POLL_INTERVAL_SECONDS = 1.5
+
+
+def _format_sse_event(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+def _job_progress_payload(job: TrainingJob) -> dict:
+    return {
+        "id": str(job.id),
+        "status": job.status,
+        "progress": job.progress,
+        "stage": job.stage,
+        "metrics": job.metrics_json,
+        "error_message": job.error_message,
+    }
+
+
+async def _job_event_generator(job_id: uuid.UUID, session_factory):
+    """Poll TrainingJob and yield SSE progress events until terminal state."""
+    while True:
+        db = session_factory()
+        try:
+            job = (
+                db.query(TrainingJob)
+                .options(joinedload(TrainingJob.project))
+                .filter(TrainingJob.id == job_id)
+                .first()
+            )
+            if not job:
+                yield _format_sse_event("error", {"message": "Job not found"})
+                break
+
+            yield _format_sse_event("progress", _job_progress_payload(job))
+
+            if job.status in TERMINAL_JOB_STATUSES:
+                break
+        finally:
+            db.close()
+
+        await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
 
 
 @router.post("/", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
@@ -228,6 +274,50 @@ def get_job(
         )
 
     return job
+
+
+@router.get("/{job_id}/stream")
+async def stream_job_progress(
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Stream job progress via Server-Sent Events.
+
+    Polls the TrainingJob record every 1-2 seconds and emits status,
+    progress, metrics, and error_message until a terminal state is reached.
+    """
+    job = (
+        db.query(TrainingJob)
+        .options(joinedload(TrainingJob.project))
+        .filter(TrainingJob.id == job_id)
+        .first()
+    )
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    if job.project.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this job",
+        )
+
+    session_factory = sessionmaker(bind=db.get_bind())
+
+    return StreamingResponse(
+        _job_event_generator(job_id, session_factory),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)

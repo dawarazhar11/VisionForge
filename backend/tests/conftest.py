@@ -2,6 +2,9 @@
 Pytest configuration and fixtures for backend tests.
 """
 import os
+
+os.environ["TESTING"] = "1"
+
 import sys
 import pytest
 from fastapi.testclient import TestClient
@@ -23,7 +26,8 @@ postgresql_dialects.JSONB = TestJSONB
 sys.modules['sqlalchemy.dialects.postgresql'].JSONB = TestJSONB
 
 from app.main import app
-from app.database import Base, get_db
+from app.database import Base
+from app.api.deps import get_db
 from app.config import settings
 
 
@@ -100,7 +104,7 @@ def test_user(client, test_user_data):
 
 
 @pytest.fixture
-def auth_headers(client, test_user_data):
+def auth_headers(client, test_user, test_user_data):
     """
     Get authentication headers with valid JWT token.
     """
