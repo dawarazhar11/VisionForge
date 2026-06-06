@@ -495,6 +495,78 @@ class ApiService {
     }
   }
 
+  /// List trained models for the current user.
+  Future<List<Map<String, dynamic>>> getModels(
+    String token, {
+    int page = 1,
+    int pageSize = 50,
+  }) async {
+    final uri = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.models}/').replace(
+      queryParameters: {
+        'page': page.toString(),
+        'page_size': pageSize.toString(),
+      },
+    );
+
+    final response = await _client.get(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data is Map && data['models'] is List) {
+        return (data['models'] as List)
+            .map((m) => Map<String, dynamic>.from(m as Map))
+            .toList();
+      }
+      return [];
+    }
+
+    final error = jsonDecode(response.body);
+    throw Exception(error['detail'] ?? 'Failed to load models');
+  }
+
+  /// List trained models for a specific project.
+  Future<List<Map<String, dynamic>>> getModelsForProject(
+    String token,
+    String projectId, {
+    int page = 1,
+    int pageSize = 50,
+  }) async {
+    final uri = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.models}/').replace(
+      queryParameters: {
+        'project_id': projectId,
+        'page': page.toString(),
+        'page_size': pageSize.toString(),
+      },
+    );
+
+    final response = await _client.get(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data is Map && data['models'] is List) {
+        return (data['models'] as List)
+            .map((m) => Map<String, dynamic>.from(m as Map))
+            .toList();
+      }
+      return [];
+    }
+
+    final error = jsonDecode(response.body);
+    throw Exception(error['detail'] ?? 'Failed to load models');
+  }
+
   /// Download model file with progress
   Future<void> downloadModel(
     String token,

@@ -19,6 +19,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
   bool _isLoading = true;
   String? _error;
   Map<String, double> _downloadProgress = {};
+  Map<String, String> _downloadStage = {};
   String? _activeModelId;
   String? _activeModelPath;
 
@@ -57,6 +58,29 @@ class _ModelsScreenState extends State<ModelsScreen> {
     }
   }
 
+  String _modelDisplayName(Map<String, dynamic> model) {
+    final size = model['model_size']?.toString() ?? 'unknown';
+    final numClasses = model['num_classes']?.toString() ?? '?';
+    final id = model['id']?.toString() ?? '';
+    final shortId = id.length > 8 ? id.substring(0, 8) : id;
+    return 'YOLO $size · $numClasses classes · $shortId';
+  }
+
+  double _modelAccuracy(Map<String, dynamic> model) {
+    final metrics = model['metrics'];
+    if (metrics is Map) {
+      final mAP50 = metrics['mAP50'] ?? metrics['map50'];
+      if (mAP50 is num) return mAP50.toDouble();
+    }
+    return 0.0;
+  }
+
+  String _modelCreatedAt(Map<String, dynamic> model) {
+    final raw = model['created_at']?.toString() ?? '';
+    if (raw.length >= 10) return raw.substring(0, 10);
+    return raw;
+  }
+
   Future<void> _loadModels() async {
     setState(() {
       _isLoading = true;
@@ -72,9 +96,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
       }
 
       final apiService = ApiService();
-      // Note: Backend endpoint might return different structure
-      // Adjust based on actual API response
-      final models = [];  // await apiService.getModels(token);
+      final models = await apiService.getModels(token);
 
       setState(() {
         _models = models;
@@ -88,7 +110,16 @@ class _ModelsScreenState extends State<ModelsScreen> {
     }
   }
 
-  Future<void> _downloadModel(String modelId, String modelName) async {
+  Future<String> _modelDirPath(String modelId) async {
+    final directory = await getApplicationDocumentsDirectory();
+    return '${directory.path}/models/$modelId';
+  }
+
+  Future<String> _modelTflitePath(String modelId) async {
+    return '${await _modelDirPath(modelId)}/model.tflite';
+  }
+
+  Future<void> _downloadModel(String modelId) async {
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final token = authProvider.accessToken;
@@ -97,46 +128,45 @@ class _ModelsScreenState extends State<ModelsScreen> {
         throw Exception('Not authenticated');
       }
 
-      // Get app documents directory
-      final directory = await getApplicationDocumentsDirectory();
-      final modelsDir = Directory('${directory.path}/models');
-      if (!await modelsDir.exists()) {
-        await modelsDir.create(recursive: true);
-      }
-
-      final filePath = '${modelsDir.path}/$modelName.tflite';
+      final modelDir = await _modelDirPath(modelId);
 
       setState(() {
         _downloadProgress[modelId] = 0.0;
+        _downloadStage[modelId] = 'exporting';
       });
 
       final apiService = ApiService();
-      await apiService.downloadModel(
+      final tflitePath = await apiService.downloadTFLitePackage(
         token,
         modelId,
-        filePath,
-        onProgress: (received, total) {
-          if (total > 0) {
-            setState(() {
-              _downloadProgress[modelId] = received / total;
-            });
-          }
+        modelDir,
+        onProgress: (stage, received, total) {
+          if (!mounted) return;
+          setState(() {
+            _downloadStage[modelId] = stage;
+            if (stage == 'exporting') {
+              _downloadProgress[modelId] = 0.05;
+            } else if (total > 0) {
+              _downloadProgress[modelId] = 0.1 + 0.9 * (received / total);
+            }
+          });
         },
       );
 
       setState(() {
         _downloadProgress.remove(modelId);
+        _downloadStage.remove(modelId);
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Model downloaded to: $filePath'),
+            content: const Text('TFLite model and labels downloaded'),
             backgroundColor: Colors.green,
             action: SnackBarAction(
               label: 'Set Active',
               textColor: Colors.white,
-              onPressed: () => _setActiveModel(modelId, filePath),
+              onPressed: () => _setActiveModel(modelId, tflitePath),
             ),
           ),
         );
@@ -144,6 +174,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
     } catch (e) {
       setState(() {
         _downloadProgress.remove(modelId);
+        _downloadStage.remove(modelId);
       });
 
       if (mounted) {
@@ -264,12 +295,13 @@ class _ModelsScreenState extends State<ModelsScreen> {
                             itemCount: _models.length,
                             itemBuilder: (context, index) {
                               final model = _models[index];
-                              final modelId = model['id'] ?? '';
-                              final modelName = model['name'] ?? 'Unknown Model';
-                              final accuracy = model['accuracy'] ?? 0.0;
-                              final createdAt = model['created_at'] ?? '';
+                              final modelId = model['id']?.toString() ?? '';
+                              final modelName = _modelDisplayName(model);
+                              final accuracy = _modelAccuracy(model);
+                              final createdAt = _modelCreatedAt(model);
                               final isDownloading = _downloadProgress.containsKey(modelId);
                               final progress = _downloadProgress[modelId] ?? 0.0;
+                              final downloadStage = _downloadStage[modelId];
                               final isActive = modelId == _activeModelId;
 
                               return Card(
@@ -313,19 +345,27 @@ class _ModelsScreenState extends State<ModelsScreen> {
                                       subtitle: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text('Accuracy: ${(accuracy * 100).toStringAsFixed(1)}%'),
+                                          Text('mAP50: ${(accuracy * 100).toStringAsFixed(1)}%'),
                                           Text('Created: $createdAt', style: const TextStyle(fontSize: 12)),
                                         ],
                                       ),
                                       trailing: isDownloading
                                           ? SizedBox(
-                                              width: 50,
+                                              width: 72,
                                               child: Column(
                                                 mainAxisAlignment: MainAxisAlignment.center,
                                                 children: [
-                                                  CircularProgressIndicator(value: progress),
+                                                  CircularProgressIndicator(
+                                                    value: progress > 0 ? progress : null,
+                                                  ),
                                                   const SizedBox(height: 4),
-                                                  Text('${(progress * 100).toInt()}%', style: const TextStyle(fontSize: 10)),
+                                                  Text(
+                                                    downloadStage == 'exporting'
+                                                        ? 'Export…'
+                                                        : '${(progress * 100).toInt()}%',
+                                                    style: const TextStyle(fontSize: 10),
+                                                    textAlign: TextAlign.center,
+                                                  ),
                                                 ],
                                               ),
                                             )
@@ -334,19 +374,17 @@ class _ModelsScreenState extends State<ModelsScreen> {
                                               children: [
                                                 IconButton(
                                                   icon: const Icon(Icons.download),
-                                                  onPressed: () => _downloadModel(modelId, modelName),
+                                                  onPressed: () => _downloadModel(modelId),
                                                   tooltip: 'Download Model',
                                                 ),
                                                 if (!isActive)
                                                   IconButton(
                                                     icon: const Icon(Icons.play_circle_outline),
                                                     onPressed: () async {
-                                                      // Check if model file exists locally
-                                                      final directory = await getApplicationDocumentsDirectory();
-                                                      final filePath = '${directory.path}/models/$modelName.tflite';
+                                                      final filePath = await _modelTflitePath(modelId);
                                                       if (File(filePath).existsSync()) {
                                                         _setActiveModel(modelId, filePath);
-                                                      } else {
+                                                      } else if (mounted) {
                                                         ScaffoldMessenger.of(context).showSnackBar(
                                                           const SnackBar(
                                                             content: Text('Download model first'),
@@ -363,7 +401,22 @@ class _ModelsScreenState extends State<ModelsScreen> {
                                     if (isDownloading)
                                       Padding(
                                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                        child: LinearProgressIndicator(value: progress),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            if (downloadStage != null)
+                                              Text(
+                                                downloadStage == 'exporting'
+                                                    ? 'Exporting to TFLite on server…'
+                                                    : 'Downloading model…',
+                                                style: const TextStyle(fontSize: 12),
+                                              ),
+                                            const SizedBox(height: 4),
+                                            LinearProgressIndicator(
+                                              value: progress > 0 ? progress : null,
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                   ],
                                 ),

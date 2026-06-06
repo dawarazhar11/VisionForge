@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
@@ -16,11 +17,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _highQualityCamera = true;
   double _confidenceThreshold = 0.5;
   String _selectedFormat = 'tflite';
+  final _backendUrlController = TextEditingController();
+  bool _isTestingConnection = false;
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
+  }
+
+  @override
+  void dispose() {
+    _backendUrlController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSettings() async {
@@ -30,6 +39,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _highQualityCamera = prefs.getBool('highQualityCamera') ?? true;
       _confidenceThreshold = prefs.getDouble('confidenceThreshold') ?? 0.5;
       _selectedFormat = prefs.getString('modelFormat') ?? 'tflite';
+      _backendUrlController.text =
+          prefs.getString(ApiConfig.backendUrlPrefKey) ?? '';
     });
   }
 
@@ -39,6 +50,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setBool('highQualityCamera', _highQualityCamera);
     await prefs.setDouble('confidenceThreshold', _confidenceThreshold);
     await prefs.setString('modelFormat', _selectedFormat);
+    await ApiConfig.setBaseUrlOverride(_backendUrlController.text);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -47,6 +59,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
           backgroundColor: Colors.green,
         ),
       );
+    }
+  }
+
+  Future<void> _testBackendConnection() async {
+    setState(() => _isTestingConnection = true);
+
+    final testUrl = ApiConfig.baseUrl;
+    final uri = Uri.parse('$testUrl${ApiConfig.health}');
+
+    try {
+      final response = await http
+          .get(uri)
+          .timeout(ApiConfig.connectionTimeout);
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Connected to $testUrl'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Server responded with status ${response.statusCode}',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Connection failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isTestingConnection = false);
+      }
     }
   }
 
@@ -216,6 +273,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
 
+          // Backend Settings
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Backend Server',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Override the API base URL for physical device testing. '
+                    'Leave blank to use the default (${ApiConfig.defaultBaseUrl}).',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _backendUrlController,
+                    decoration: InputDecoration(
+                      labelText: 'Backend URL',
+                      hintText: ApiConfig.defaultBaseUrl,
+                      prefixIcon: const Icon(Icons.cloud),
+                      border: const OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.url,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isTestingConnection
+                              ? null
+                              : () async {
+                                  await ApiConfig.setBaseUrlOverride(
+                                    _backendUrlController.text,
+                                  );
+                                  await _testBackendConnection();
+                                },
+                          icon: _isTestingConnection
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.network_check),
+                          label: const Text('Test Connection'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Active URL: ${ApiConfig.baseUrl}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // App Info
           Card(
             child: Padding(
@@ -232,11 +357,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     leading: const Icon(Icons.info),
                     title: const Text('Version'),
                     subtitle: const Text('1.0.0'),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.cloud),
-                    title: const Text('API Server'),
-                    subtitle: Text(ApiConfig.baseUrl),
                   ),
                   ListTile(
                     leading: const Icon(Icons.delete),
