@@ -10,7 +10,7 @@ import uuid
 from fastapi import UploadFile, HTTPException, status
 from loguru import logger
 
-from app.config import settings
+from app.config import get_settings
 
 
 # Allowed file types for 3D models
@@ -266,5 +266,5 @@ class StorageService:
         return used_bytes < quota_bytes
 
 
-# Global storage service instance
-storage_service = StorageService()
+# Global storage service instance — use settings.UPLOAD_DIR so files land in the mounted volume
+storage_service = StorageService(base_upload_dir=get_settings().UPLOAD_DIR)

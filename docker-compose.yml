@@ -116,7 +116,7 @@ services:
       dockerfile: Dockerfile
     container_name: yolo_celery_worker
     restart: unless-stopped
-    command: celery -A app.celery_app.celery_app worker --loglevel=info --concurrency=2
+    command: celery -A app.celery_app.celery_app worker --loglevel=info --concurrency=2 -Q rendering,training,default,celery
     environment:
       # Database
       DATABASE_URL: "postgresql://yolo_user:yolo_dev_pass@postgres:5432/yolo_assembly"
