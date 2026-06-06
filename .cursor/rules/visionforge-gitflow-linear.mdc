@@ -1,0 +1,45 @@
+---
+description: VisionForge git flow and Linear milestone tracking
+alwaysApply: true
+---
+
+# VisionForge — Git Flow & Linear
+
+**GitHub:** https://github.com/dawarazhar11/VisionForge  
+**Linear:** VisionForge project (team: Dawar-personal)
+
+## Git flow
+
+```
+master  ← production (GitHub default)
+  ↑
+develop ← integration branch
+  ↑
+feature/daw-XX-short-name
+```
+
+1. Start from `develop`: `git checkout develop && git pull origin develop`
+2. Create branch: `git checkout -b feature/daw-37-wire-models-api`
+3. Commit format: `type(scope): message (DAW-XX)` — e.g. `feat(flutter): wire ModelsScreen (DAW-37)`
+4. Push: `git push -u origin feature/daw-XX-short-name`
+5. Open PR on GitHub: **feature → develop**
+6. At milestone completion: PR **develop → master**
+
+Never commit directly to `master`. Never force-push `master`.
+
+## Linear (every dev session)
+
+**Starting work**
+- Set issue status to **In Progress**
+- Branch name must include Linear ID (`feature/daw-37-...`)
+
+**Finishing work**
+- Mark issue **Done** after PR merges to `develop`
+- Add comment with GitHub PR URL + merge commit SHA
+- If a feature batch closes a milestone, create a `[Done summary]` issue listing delivered items and PR links
+
+**Already shipped** — see Done issues DAW-93 through DAW-99 in Linear for baseline on `master`.
+
+## Priority open issues
+
+MVP path: DAW-37 → DAW-38 → DAW-76 → DAW-71 → DAW-33

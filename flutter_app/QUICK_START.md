@@ -99,6 +99,9 @@ Ctrl + Cmd + Z   - Shake gesture
 
 **For full testing: Deploy to physical iPhone**
 
+### Backend URL on a physical device
+The app defaults to the Netbird VPN backend URL. On a real phone, open **Settings → Backend Server**, enter your machine's LAN IP or ngrok URL (e.g. `http://192.168.1.10:8002`), tap **Save**, then **Test Connection** to ping `/health`.
+
 ---
 
 ## 🎨 Testing Blender Upload

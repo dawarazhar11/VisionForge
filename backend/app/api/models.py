@@ -427,3 +427,56 @@ def download_exported_model(
         media_type=media_type,
         filename=filename,
     )
+
+
+@router.get("/{model_id}/labels")
+def download_model_labels(
+    model_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Download class labels for a trained model as a plain text file.
+
+    One label per line, ordered by class index. Intended to be saved
+    alongside the TFLite model so the inference engine can load it.
+    """
+    import tempfile
+
+    job = (
+        db.query(TrainingJob)
+        .filter(
+            TrainingJob.id == model_id,
+            TrainingJob.stage == "train",
+            TrainingJob.status == "SUCCESS",
+        )
+        .first()
+    )
+
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not found")
+
+    if job.project.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+    result_data = job.result_data or {}
+    class_names = result_data.get("class_names") or []
+
+    if not class_names:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No class names recorded for this model",
+        )
+
+    # Write to a temp file and stream it back
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".txt", delete=False, prefix=f"labels_{model_id}_"
+    )
+    tmp.write("\n".join(class_names))
+    tmp.close()
+
+    return FileResponse(
+        path=tmp.name,
+        media_type="text/plain",
+        filename=f"labels_{model_id}.txt",
+    )
