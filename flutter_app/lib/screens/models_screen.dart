@@ -57,6 +57,29 @@ class _ModelsScreenState extends State<ModelsScreen> {
     }
   }
 
+  String _modelDisplayName(Map<String, dynamic> model) {
+    final size = model['model_size']?.toString() ?? 'unknown';
+    final numClasses = model['num_classes']?.toString() ?? '?';
+    final id = model['id']?.toString() ?? '';
+    final shortId = id.length > 8 ? id.substring(0, 8) : id;
+    return 'YOLO $size · $numClasses classes · $shortId';
+  }
+
+  double _modelAccuracy(Map<String, dynamic> model) {
+    final metrics = model['metrics'];
+    if (metrics is Map) {
+      final mAP50 = metrics['mAP50'] ?? metrics['map50'];
+      if (mAP50 is num) return mAP50.toDouble();
+    }
+    return 0.0;
+  }
+
+  String _modelCreatedAt(Map<String, dynamic> model) {
+    final raw = model['created_at']?.toString() ?? '';
+    if (raw.length >= 10) return raw.substring(0, 10);
+    return raw;
+  }
+
   Future<void> _loadModels() async {
     setState(() {
       _isLoading = true;
@@ -72,9 +95,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
       }
 
       final apiService = ApiService();
-      // Note: Backend endpoint might return different structure
-      // Adjust based on actual API response
-      final models = [];  // await apiService.getModels(token);
+      final models = await apiService.getModels(token);
 
       setState(() {
         _models = models;
@@ -88,7 +109,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
     }
   }
 
-  Future<void> _downloadModel(String modelId, String modelName) async {
+  Future<void> _downloadModel(String modelId) async {
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final token = authProvider.accessToken;
@@ -104,7 +125,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
         await modelsDir.create(recursive: true);
       }
 
-      final filePath = '${modelsDir.path}/$modelName.tflite';
+      final filePath = '${modelsDir.path}/$modelId.tflite';
 
       setState(() {
         _downloadProgress[modelId] = 0.0;
@@ -264,10 +285,10 @@ class _ModelsScreenState extends State<ModelsScreen> {
                             itemCount: _models.length,
                             itemBuilder: (context, index) {
                               final model = _models[index];
-                              final modelId = model['id'] ?? '';
-                              final modelName = model['name'] ?? 'Unknown Model';
-                              final accuracy = model['accuracy'] ?? 0.0;
-                              final createdAt = model['created_at'] ?? '';
+                              final modelId = model['id']?.toString() ?? '';
+                              final modelName = _modelDisplayName(model);
+                              final accuracy = _modelAccuracy(model);
+                              final createdAt = _modelCreatedAt(model);
                               final isDownloading = _downloadProgress.containsKey(modelId);
                               final progress = _downloadProgress[modelId] ?? 0.0;
                               final isActive = modelId == _activeModelId;
@@ -313,7 +334,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
                                       subtitle: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text('Accuracy: ${(accuracy * 100).toStringAsFixed(1)}%'),
+                                          Text('mAP50: ${(accuracy * 100).toStringAsFixed(1)}%'),
                                           Text('Created: $createdAt', style: const TextStyle(fontSize: 12)),
                                         ],
                                       ),
@@ -334,7 +355,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
                                               children: [
                                                 IconButton(
                                                   icon: const Icon(Icons.download),
-                                                  onPressed: () => _downloadModel(modelId, modelName),
+                                                  onPressed: () => _downloadModel(modelId),
                                                   tooltip: 'Download Model',
                                                 ),
                                                 if (!isActive)
@@ -343,7 +364,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
                                                     onPressed: () async {
                                                       // Check if model file exists locally
                                                       final directory = await getApplicationDocumentsDirectory();
-                                                      final filePath = '${directory.path}/models/$modelName.tflite';
+                                                      final filePath = '${directory.path}/models/$modelId.tflite';
                                                       if (File(filePath).existsSync()) {
                                                         _setActiveModel(modelId, filePath);
                                                       } else {
