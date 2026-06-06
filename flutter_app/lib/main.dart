@@ -4,6 +4,7 @@ import 'providers/auth_provider.dart';
 import 'providers/detection_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
+import 'utils/api_config.dart';
 
 void main() {
   runApp(const YoloVisionApp());
@@ -68,6 +69,7 @@ class _AppInitializerState extends State<AppInitializer> {
   Future<void> _initializeApp() async {
     try {
       print('🚀 App: Starting initialization');
+      await ApiConfig.load();
       // Initialize auth provider to check for existing token
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       await authProvider.initialize();
