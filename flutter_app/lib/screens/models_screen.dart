@@ -19,6 +19,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
   bool _isLoading = true;
   String? _error;
   Map<String, double> _downloadProgress = {};
+  Map<String, String> _downloadStage = {};
   String? _activeModelId;
   String? _activeModelPath;
 
@@ -109,6 +110,15 @@ class _ModelsScreenState extends State<ModelsScreen> {
     }
   }
 
+  Future<String> _modelDirPath(String modelId) async {
+    final directory = await getApplicationDocumentsDirectory();
+    return '${directory.path}/models/$modelId';
+  }
+
+  Future<String> _modelTflitePath(String modelId) async {
+    return '${await _modelDirPath(modelId)}/model.tflite';
+  }
+
   Future<void> _downloadModel(String modelId) async {
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -118,46 +128,45 @@ class _ModelsScreenState extends State<ModelsScreen> {
         throw Exception('Not authenticated');
       }
 
-      // Get app documents directory
-      final directory = await getApplicationDocumentsDirectory();
-      final modelsDir = Directory('${directory.path}/models');
-      if (!await modelsDir.exists()) {
-        await modelsDir.create(recursive: true);
-      }
-
-      final filePath = '${modelsDir.path}/$modelId.tflite';
+      final modelDir = await _modelDirPath(modelId);
 
       setState(() {
         _downloadProgress[modelId] = 0.0;
+        _downloadStage[modelId] = 'exporting';
       });
 
       final apiService = ApiService();
-      await apiService.downloadModel(
+      final tflitePath = await apiService.downloadTFLitePackage(
         token,
         modelId,
-        filePath,
-        onProgress: (received, total) {
-          if (total > 0) {
-            setState(() {
-              _downloadProgress[modelId] = received / total;
-            });
-          }
+        modelDir,
+        onProgress: (stage, received, total) {
+          if (!mounted) return;
+          setState(() {
+            _downloadStage[modelId] = stage;
+            if (stage == 'exporting') {
+              _downloadProgress[modelId] = 0.05;
+            } else if (total > 0) {
+              _downloadProgress[modelId] = 0.1 + 0.9 * (received / total);
+            }
+          });
         },
       );
 
       setState(() {
         _downloadProgress.remove(modelId);
+        _downloadStage.remove(modelId);
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Model downloaded to: $filePath'),
+            content: const Text('TFLite model and labels downloaded'),
             backgroundColor: Colors.green,
             action: SnackBarAction(
               label: 'Set Active',
               textColor: Colors.white,
-              onPressed: () => _setActiveModel(modelId, filePath),
+              onPressed: () => _setActiveModel(modelId, tflitePath),
             ),
           ),
         );
@@ -165,6 +174,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
     } catch (e) {
       setState(() {
         _downloadProgress.remove(modelId);
+        _downloadStage.remove(modelId);
       });
 
       if (mounted) {
@@ -291,6 +301,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
                               final createdAt = _modelCreatedAt(model);
                               final isDownloading = _downloadProgress.containsKey(modelId);
                               final progress = _downloadProgress[modelId] ?? 0.0;
+                              final downloadStage = _downloadStage[modelId];
                               final isActive = modelId == _activeModelId;
 
                               return Card(
@@ -340,13 +351,21 @@ class _ModelsScreenState extends State<ModelsScreen> {
                                       ),
                                       trailing: isDownloading
                                           ? SizedBox(
-                                              width: 50,
+                                              width: 72,
                                               child: Column(
                                                 mainAxisAlignment: MainAxisAlignment.center,
                                                 children: [
-                                                  CircularProgressIndicator(value: progress),
+                                                  CircularProgressIndicator(
+                                                    value: progress > 0 ? progress : null,
+                                                  ),
                                                   const SizedBox(height: 4),
-                                                  Text('${(progress * 100).toInt()}%', style: const TextStyle(fontSize: 10)),
+                                                  Text(
+                                                    downloadStage == 'exporting'
+                                                        ? 'Export…'
+                                                        : '${(progress * 100).toInt()}%',
+                                                    style: const TextStyle(fontSize: 10),
+                                                    textAlign: TextAlign.center,
+                                                  ),
                                                 ],
                                               ),
                                             )
@@ -362,12 +381,10 @@ class _ModelsScreenState extends State<ModelsScreen> {
                                                   IconButton(
                                                     icon: const Icon(Icons.play_circle_outline),
                                                     onPressed: () async {
-                                                      // Check if model file exists locally
-                                                      final directory = await getApplicationDocumentsDirectory();
-                                                      final filePath = '${directory.path}/models/$modelId.tflite';
+                                                      final filePath = await _modelTflitePath(modelId);
                                                       if (File(filePath).existsSync()) {
                                                         _setActiveModel(modelId, filePath);
-                                                      } else {
+                                                      } else if (mounted) {
                                                         ScaffoldMessenger.of(context).showSnackBar(
                                                           const SnackBar(
                                                             content: Text('Download model first'),
@@ -384,7 +401,22 @@ class _ModelsScreenState extends State<ModelsScreen> {
                                     if (isDownloading)
                                       Padding(
                                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                        child: LinearProgressIndicator(value: progress),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            if (downloadStage != null)
+                                              Text(
+                                                downloadStage == 'exporting'
+                                                    ? 'Exporting to TFLite on server…'
+                                                    : 'Downloading model…',
+                                                style: const TextStyle(fontSize: 12),
+                                              ),
+                                            const SizedBox(height: 4),
+                                            LinearProgressIndicator(
+                                              value: progress > 0 ? progress : null,
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                   ],
                                 ),
