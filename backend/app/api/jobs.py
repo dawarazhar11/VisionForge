@@ -110,6 +110,13 @@ def create_job(
             detail="Not authorized to create jobs for this project",
         )
 
+    valid_job_types = {"test", "render", "train"}
+    if job_data.job_type not in valid_job_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid job type: {job_data.job_type}. Valid types: test, render, train",
+        )
+
     # Create job in database
     job_id = uuid.uuid4()
     job = TrainingJob(
@@ -144,14 +151,6 @@ def create_job(
                 job_id=str(job_id),
                 config=job_data.config or {},
             )
-        else:
-            db.delete(job)
-            db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid job type: {job_data.job_type}. Valid types: test, render, train",
-            )
-
         # Store Celery task ID in metrics_json
         job.metrics_json = {"celery_task_id": task.id}
         db.commit()
@@ -161,6 +160,8 @@ def create_job(
             f"Job {job_id} created: type={job_data.job_type}, celery_task={task.id}"
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to create Celery task: {e}")
         db.delete(job)
