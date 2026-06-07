@@ -29,7 +29,7 @@ except ImportError:
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BASE_URL = "http://localhost:8002"
-DEFAULT_EMAIL = f"e2e-{uuid.uuid4().hex[:8]}@visionforge.test"
+DEFAULT_EMAIL = f"e2e-{uuid.uuid4().hex[:8]}@example.com"
 DEFAULT_PASSWORD = "E2eTest!234"
 
 
