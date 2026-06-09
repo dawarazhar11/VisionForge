@@ -44,7 +44,7 @@ class TestJobCreation:
         job_data = {
             "project_id": test_project["id"],
             "job_type": "render",
-            "config": {"num_images": 100}
+            "config": {"num_renders": 100}
         }
 
         mock_task.return_value.id = "mock-task-id"

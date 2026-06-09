@@ -92,7 +92,10 @@ services:
 
       # CORS
       CORS_ORIGINS: '["http://localhost:3000","http://localhost:8080","http://localhost:8002"]'
+    entrypoint: ["/docker-entrypoint.sh"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
     volumes:
+      - ./backend/docker-entrypoint.sh:/docker-entrypoint.sh:ro
       - ./backend/storage:/app/storage
       - ./backend/logs:/app/logs
     depends_on:
@@ -104,8 +107,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 10
+      start_period: 900s
     networks:
       - yolo_network
 
@@ -116,7 +119,8 @@ services:
       dockerfile: Dockerfile
     container_name: yolo_celery_worker
     restart: unless-stopped
-    command: celery -A app.celery_app.celery_app worker --loglevel=info --concurrency=2 -Q rendering,training,default,celery
+    entrypoint: ["/docker-entrypoint.sh"]
+    command: ["celery", "-A", "app.celery_app.celery_app", "worker", "--loglevel=info", "--concurrency=2", "-Q", "rendering,training,default,celery"]
     environment:
       # Database
       DATABASE_URL: "postgresql://yolo_user:yolo_dev_pass@postgres:5432/yolo_assembly"
@@ -131,6 +135,7 @@ services:
       DATASET_DIR: "storage/datasets"
       MODEL_DIR: "storage/models"
     volumes:
+      - ./backend/docker-entrypoint.sh:/docker-entrypoint.sh:ro
       - ./backend/storage:/app/storage
       - ./backend/logs:/app/logs
     depends_on:
@@ -150,7 +155,8 @@ services:
       dockerfile: Dockerfile
     container_name: yolo_celery_beat
     restart: unless-stopped
-    command: celery -A app.celery_app.celery_app beat --loglevel=info
+    entrypoint: ["/docker-entrypoint.sh"]
+    command: ["celery", "-A", "app.celery_app.celery_app", "beat", "--loglevel=info"]
     environment:
       # Database
       DATABASE_URL: "postgresql://yolo_user:yolo_dev_pass@postgres:5432/yolo_assembly"
@@ -160,6 +166,7 @@ services:
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/1"
     volumes:
+      - ./backend/docker-entrypoint.sh:/docker-entrypoint.sh:ro
       - ./backend/logs:/app/logs
     depends_on:
       postgres:
