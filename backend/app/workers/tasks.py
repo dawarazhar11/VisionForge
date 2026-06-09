@@ -258,7 +258,7 @@ def render_synthetic_data(
                 blender_path=blender_path,
             )
         else:
-            extra = {}
+            extra: Dict[str, Any] = {}
 
             def _progress(p: int):
                 update_job_status(self.db, job_id, "RUNNING", progress=p)
@@ -270,7 +270,12 @@ def render_synthetic_data(
                 config=render_config,
                 project_id=UUID(project_id),
                 job_id=UUID(job_id),
+                project_metadata=project.metadata_json,
             )
+            if render_result.class_names:
+                extra["class_names"] = render_result.class_names
+            if render_result.class_map_source:
+                extra["class_map_source"] = render_result.class_map_source
 
         # ── Handle result ─────────────────────────────────────────────────────
         if render_result.success:

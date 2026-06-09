@@ -17,7 +17,7 @@ Android is out of scope (DAW-121). Use this checklist for manual runs and `scrip
 ### Known platform blockers
 
 - **ARM64 Docker**: cadquery STEP feature recognition unavailable — STEP renders use geometric heuristics, not part names (DAW-118).
-- **`.blend` uploads**: Default render script expects desk-scene object names (DAW-119). Use bundled demo or STEP for MVP validation.
+- **`.blend` uploads**: Generic class-map pipeline (DAW-119) auto-detects desk scenes or assigns one class per mesh. Custom maps via `metadata_json.class_map`. Dual-pass segmentation for desk scenes is still legacy-only.
 - **Podman machine**: If `podman-compose up -d` fails, run `podman machine init && podman machine start`.
 
 ## Phase 1 — Stack & API (automated)
