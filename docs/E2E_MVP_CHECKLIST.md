@@ -8,7 +8,8 @@ Android is out of scope (DAW-121). Use this checklist for manual runs and `scrip
 
 | Item | macOS (dev) | Notes |
 |------|-------------|-------|
-| Container runtime | Podman | `podman machine start` then `podman-compose up -d` |
+| Container runtime | Podman (preferred) | `podman machine start` then `podman-compose up -d` |
+| Local fallback | Homebrew PG + Redis + `.venv-test` | If Podman fails: `brew services start postgresql@16 redis`, then uvicorn + celery from `backend/.venv-test` (render needs Blender in worker or `BLENDER_PATH` on Mac) |
 | API reachable | `http://localhost:8002/health` | Backend on port 8002 |
 | Celery worker queues | `rendering,training,default,celery` | Required or jobs stay PENDING |
 | Sample upload file | `STEP Files/Test 1.STEP` | STEP works on ARM64 Docker; cadquery geometric labels only |
@@ -51,10 +52,11 @@ python scripts/e2e/validate_mvp.py --full \
 
 ### Backend URL
 
-The app defaults to a Tailscale IP (`flutter_app/lib/utils/api_config.dart`). On simulator, set **Settings → Backend URL** to your Mac's LAN IP or `http://localhost:8002` won't work from a physical device.
+Default compile-time URL: `http://100.108.186.54:8002` (Tailscale) in `flutter_app/lib/utils/api_config.dart`. Override via **Home → Settings → Backend URL** (saved in SharedPreferences).
 
-- Simulator: `http://127.0.0.1:8002` or host machine IP
-- Physical iPhone: Mac LAN IP (e.g. `http://192.168.x.x:8002`) or Tailscale IP
+- iOS Simulator: `http://127.0.0.1:8002` (localhost on the Mac host)
+- Physical iPhone: Mac LAN IP (e.g. `http://192.168.x.x:8002`) or Tailscale IP — `localhost` will not reach your Mac
+- Use **Test Connection** on Settings after changing the URL
 
 ### Steps
 
@@ -64,21 +66,21 @@ flutter pub get
 flutter run   # iOS simulator or connected iPhone
 ```
 
-| Step | Screen | Pass |
-|------|--------|------|
+| Step | Home button / screen | Pass |
+|------|----------------------|------|
 | 1 | Login / Register | Authenticated, no API errors |
-| 2 | Projects | Upload STEP or blend file visible |
-| 3 | Training Jobs | Create render job; SSE progress updates (DAW-39) |
-| 4 | Training Jobs | Render completes; create train job |
-| 5 | Models | Trained model listed after train SUCCESS |
-| 6 | Models | Download TFLite package (model + labels) |
-| 7 | Camera | Load downloaded model; live detections appear |
+| 2 | **My Projects** | Upload STEP or `.blend`; project visible in list |
+| 3 | **Training Jobs** | Create render job; SSE progress updates (DAW-39) |
+| 4 | **Training Jobs** | Render completes; create train job |
+| 5 | **My Models** | Trained model listed after train SUCCESS |
+| 6 | **My Models** | Tap download → TFLite + `labels.txt` saved; tap **Set Active** (or snackbar action) |
+| 7 | **Start Detection** (`DetectionScreen`) | Active model loads; live bounding boxes on camera preview |
 
 **Pass criteria**
 
 - [ ] SSE progress bar updates without 10s polling lag
-- [ ] TFLite + labels load in camera screen
-- [ ] At least one bounding box or mask overlay on test subject
+- [ ] TFLite + labels load on **Start Detection** (requires active model from step 6)
+- [ ] At least one bounding box overlay on test subject (simulator camera or physical iPhone)
 
 ## Phase 3 — Evidence & sign-off
 
