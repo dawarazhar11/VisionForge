@@ -255,6 +255,10 @@ class BlenderExecutionResult(BaseModel):
     labels_generated: int = Field(..., description="Number of YOLO labels generated")
     error_message: Optional[str] = Field(None, description="Error message if failed")
     blender_log: Optional[str] = Field(None, description="Blender execution log")
+    class_names: Optional[list] = Field(None, description="YOLO class names used for labels")
+    class_map_source: Optional[str] = Field(
+        None, description="How class map was resolved: metadata, desk_preset, or auto"
+    )
 
     class Config:
         json_schema_extra = {
