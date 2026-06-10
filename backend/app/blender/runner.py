@@ -162,6 +162,51 @@ class BlenderRunner:
         logger.info(f"render_step_geometry: STL={stl_path}  out={output_dir}")
         return self._execute_blender(cmd, output_dir, config.num_renders, env=env)
 
+    def render_step_parts(
+        self,
+        parts_json_path: str,
+        output_dir: str,
+        config: BlenderRenderConfig,
+    ) -> BlenderExecutionResult:
+        """
+        Render a multi-component STEP assembly: one STL per named part,
+        each part its own YOLO class (DAW-118).
+        """
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+        script_path = find_blender_script("step_parts_render_script.py")
+        if script_path is None:
+            return BlenderExecutionResult(
+                success=False,
+                output_dir=output_dir,
+                images_generated=0,
+                labels_generated=0,
+                error_message=(
+                    "step_parts_render_script.py not found in any Blender "
+                    "scripts location (set BLENDER_SCRIPTS_DIR)"
+                ),
+            )
+
+        env = os.environ.copy()
+        env.update({
+            "VFORGE_PARTS_JSON":    parts_json_path,
+            "VFORGE_OUTPUT_DIR":    output_dir,
+            "VFORGE_NUM_RENDERS":   str(config.num_renders),
+            "VFORGE_RESOLUTION_X":  str(config.resolution_x),
+            "VFORGE_RESOLUTION_Y":  str(config.resolution_y),
+            "VFORGE_EEVEE_SAMPLES": str(config.eevee_samples),
+        })
+
+        cmd = [
+            self.blender_path,
+            "--background",
+            "--python", str(script_path),
+        ]
+
+        logger.info(f"render_step_parts: manifest={parts_json_path}  out={output_dir}")
+        result = self._execute_blender(cmd, output_dir, config.num_renders, env=env)
+        return self._attach_class_map_from_output(result)
+
     def check_gpu_availability(self) -> dict:
         try:
             cmd = [

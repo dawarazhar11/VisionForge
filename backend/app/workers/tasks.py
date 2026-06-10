@@ -289,6 +289,7 @@ def render_synthetic_data(
                 output_dir=output_dir,
                 render_config=render_config,
                 blender_path=blender_path,
+                project_metadata=project.metadata_json,
             )
         else:
             extra: Dict[str, Any] = {}
@@ -362,6 +363,81 @@ def render_synthetic_data(
         return {"status": "failed", "error": error_msg}
 
 
+def _run_step_parts_pipeline(
+    db: Session,
+    job_id: str,
+    assembly,
+    output_dir: Path,
+    render_config: BlenderRenderConfig,
+    blender_path: str,
+    project_metadata: Optional[Dict[str, Any]],
+    parts_dir: Path,
+) -> tuple:
+    """
+    Part-name rendering for multi-component STEP assemblies (DAW-118):
+    each named component is its own YOLO class. Class names come from the
+    CAD assembly tree (Fusion 360 / SolidWorks / Inventor component names),
+    overridable via project metadata class_map.
+    """
+    from app.blender.class_map import (
+        auto_class_map,
+        class_names_from_map,
+        parse_metadata_class_map,
+    )
+
+    names = [c.name for c in assembly.components]
+
+    parsed = parse_metadata_class_map(project_metadata)
+    if parsed is not None and any(n in parsed[0] for n in names):
+        obj_map, class_names = parsed
+        source = "metadata"
+        # Components missing from an explicit map are left unlabelled
+        components = [c for c in assembly.components if c.name in obj_map]
+    else:
+        obj_map = auto_class_map(names)
+        class_names = class_names_from_map(obj_map)
+        source = "step_part_names"
+        components = assembly.components
+
+    manifest = {
+        "parts": [
+            {
+                "name": c.name,
+                "stl_path": c.stl_path,
+                "class_index": obj_map[c.name],
+            }
+            for c in components
+        ],
+        "class_names": class_names,
+        "source": source,
+    }
+    parts_json = parts_dir / "parts.json"
+    parts_json.write_text(json.dumps(manifest, indent=2))
+
+    logger.info(
+        f"STEP part mode ({source}): {len(components)} components, "
+        f"classes {class_names}"
+    )
+    update_job_status(db, job_id, "RUNNING", progress=20)
+
+    def _progress(p: int):
+        update_job_status(db, job_id, "RUNNING", progress=20 + int(p * 0.80))
+
+    runner = BlenderRunner(blender_path=blender_path, progress_callback=_progress)
+    render_result = runner.render_step_parts(
+        parts_json_path=str(parts_json),
+        output_dir=str(output_dir),
+        config=render_config,
+    )
+
+    extra = {
+        "class_names":      class_names,
+        "class_map_source": source,
+        "components":       [c.name for c in components],
+    }
+    return render_result, extra
+
+
 def _run_step_pipeline(
     db: Session,
     project_id: str,
@@ -370,16 +446,46 @@ def _run_step_pipeline(
     output_dir: Path,
     render_config: BlenderRenderConfig,
     blender_path: str,
+    project_metadata: Optional[Dict[str, Any]] = None,
 ) -> tuple:
     """
     STEP rendering sub-pipeline (module-level so Celery serialisation is clean):
-      1. Parse STEP → features + STL
+      0. Read assembly tree — ≥2 named components → part-name mode (DAW-118)
+      1. Otherwise: parse STEP → features + STL
       2. Persist PartFeature records to DB
       3. Render with generic step_render_script.py
 
     Returns (BlenderExecutionResult, extra_result_dict).
     """
     from app.blender.config import BlenderExecutionResult as BER
+
+    # ── Phase 0: assembly part names (DAW-118) ──────────────────────────
+    update_job_status(db, job_id, "RUNNING", progress=3)
+
+    from app.services.step_assembly import read_step_assembly
+
+    parts_dir = output_dir / "step_parts"
+    assembly = read_step_assembly(file_path, str(parts_dir))
+
+    if assembly.success and len(assembly.components) >= 2:
+        return _run_step_parts_pipeline(
+            db=db,
+            job_id=job_id,
+            assembly=assembly,
+            output_dir=output_dir,
+            render_config=render_config,
+            blender_path=blender_path,
+            project_metadata=project_metadata,
+            parts_dir=parts_dir,
+        )
+
+    if assembly.success:
+        logger.info(
+            f"STEP has {len(assembly.components)} component(s); "
+            f"using feature recognition for labels"
+        )
+    else:
+        logger.warning(f"Assembly read unavailable: {assembly.error}")
 
     # ── Phase 1: feature recognition (5%) ───────────────────────────────
     update_job_status(db, job_id, "RUNNING", progress=5)
