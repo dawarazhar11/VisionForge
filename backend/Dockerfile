@@ -26,6 +26,11 @@ RUN apt-get update && apt-get install -y \
     libxrandr2 \
     libxcursor1 \
     libx11-6 \
+    libegl1 \
+    libgles2 \
+    libopengl0 \
+    libgl1-mesa-dri \
+    libglx-mesa0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Blender:
