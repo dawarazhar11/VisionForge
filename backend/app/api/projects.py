@@ -27,9 +27,11 @@ from app.schemas.project import (
     ProjectUpdate,
     ProjectResponse,
     ProjectListResponse,
+    ProjectClassMapResponse,
     PartFeatureResponse,
     PartFeatureListResponse,
 )
+from app.blender.class_map import parse_metadata_class_map
 from app.services.storage import storage_service
 
 router = APIRouter()
@@ -282,6 +284,23 @@ def update_project(
         project.name = project_update.name
     if project_update.description is not None:
         project.description = project_update.description
+    if project_update.class_map is not None:
+        try:
+            parsed = parse_metadata_class_map({"class_map": project_update.class_map})
+        except (TypeError, ValueError, AttributeError):
+            parsed = None
+        if parsed is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "Invalid class_map: expected {object_name: class_index} or "
+                    "{'object_to_class': {...}, 'class_names': [...]}"
+                ),
+            )
+        # Reassign a new dict so SQLAlchemy detects the JSONB change
+        metadata = dict(project.metadata_json or {})
+        metadata["class_map"] = project_update.class_map
+        project.metadata_json = metadata
 
     db.commit()
     db.refresh(project)
@@ -289,6 +308,51 @@ def update_project(
     logger.info(f"Project updated: {project.id}")
 
     return project
+
+
+@router.get("/{project_id}/class-map", response_model=ProjectClassMapResponse)
+def get_project_class_map(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Get the class map configured for a project via PATCH /projects/{id}.
+
+    Returns 404 if no explicit class map is set — in that case rendering
+    falls back to desk-preset detection or auto-mapping per mesh object.
+    """
+    project = db.query(AssemblyProject).filter(AssemblyProject.id == project_id).first()
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+
+    if project.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this project",
+        )
+
+    try:
+        parsed = parse_metadata_class_map(project.metadata_json)
+    except (TypeError, ValueError, AttributeError):
+        parsed = None
+    if parsed is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No class map set for this project",
+        )
+
+    object_to_class, class_names = parsed
+    return ProjectClassMapResponse(
+        project_id=project.id,
+        object_to_class=object_to_class,
+        class_names=class_names,
+        source="metadata",
+    )
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)

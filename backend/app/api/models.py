@@ -429,6 +429,46 @@ def download_exported_model(
     )
 
 
+@router.get("/{model_id}/class-names")
+def get_model_class_names(
+    model_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Get class names for a trained model as JSON, ordered by class index.
+
+    Same data as /labels but consumable by UIs (e.g. annotation screens)
+    without downloading a file.
+    """
+    job = (
+        db.query(TrainingJob)
+        .filter(
+            TrainingJob.id == model_id,
+            TrainingJob.stage == "train",
+            TrainingJob.status == "SUCCESS",
+        )
+        .first()
+    )
+
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not found")
+
+    if job.project.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+    result_data = job.result_data or {}
+    class_names = result_data.get("class_names") or []
+
+    if not class_names:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No class names recorded for this model",
+        )
+
+    return {"model_id": str(model_id), "class_names": class_names}
+
+
 @router.get("/{model_id}/labels")
 def download_model_labels(
     model_id: uuid.UUID,

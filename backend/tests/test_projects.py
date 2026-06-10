@@ -165,6 +165,89 @@ class TestProjectUpdate:
         assert response.json()["description"] == updated_data["description"]
 
 
+class TestProjectClassMap:
+    """Tests for setting and reading the project class map."""
+
+    def test_get_class_map_when_none_set(self, client, auth_headers, test_project):
+        """Project without a class map returns 404."""
+        response = client.get(
+            f"/api/v1/projects/{test_project['id']}/class-map",
+            headers=auth_headers
+        )
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_set_and_get_class_map_with_names(self, client, auth_headers, test_project):
+        """PATCH a full class map, then read it back."""
+        class_map = {
+            "object_to_class": {"gear_housing": 0, "shaft": 1, "bolt_m4": 2},
+            "class_names": ["housing", "shaft", "bolt"],
+        }
+        patch_response = client.patch(
+            f"/api/v1/projects/{test_project['id']}",
+            json={"class_map": class_map},
+            headers=auth_headers
+        )
+
+        assert patch_response.status_code == status.HTTP_200_OK
+
+        get_response = client.get(
+            f"/api/v1/projects/{test_project['id']}/class-map",
+            headers=auth_headers
+        )
+
+        assert get_response.status_code == status.HTTP_200_OK
+        data = get_response.json()
+        assert data["object_to_class"] == class_map["object_to_class"]
+        assert data["class_names"] == ["housing", "shaft", "bolt"]
+        assert data["source"] == "metadata"
+
+    def test_set_plain_class_map_derives_names(self, client, auth_headers, test_project):
+        """A plain {object: index} map derives class names from object names."""
+        patch_response = client.patch(
+            f"/api/v1/projects/{test_project['id']}",
+            json={"class_map": {"rotor": 0, "stator": 1}},
+            headers=auth_headers
+        )
+
+        assert patch_response.status_code == status.HTTP_200_OK
+
+        get_response = client.get(
+            f"/api/v1/projects/{test_project['id']}/class-map",
+            headers=auth_headers
+        )
+
+        assert get_response.status_code == status.HTTP_200_OK
+        assert get_response.json()["class_names"] == ["rotor", "stator"]
+
+    def test_set_invalid_class_map_rejected(self, client, auth_headers, test_project):
+        """Malformed class maps are rejected with 422."""
+        patch_response = client.patch(
+            f"/api/v1/projects/{test_project['id']}",
+            json={"class_map": {"object_to_class": "not-a-dict"}},
+            headers=auth_headers
+        )
+
+        assert patch_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    def test_set_class_map_preserves_name_update(self, client, auth_headers, test_project):
+        """class_map and name can be updated in the same PATCH."""
+        response = client.patch(
+            f"/api/v1/projects/{test_project['id']}",
+            json={"name": "Renamed", "class_map": {"part_a": 0}},
+            headers=auth_headers
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["name"] == "Renamed"
+
+    def test_class_map_requires_auth(self, client, test_project):
+        """Class map endpoints require authentication."""
+        response = client.get(f"/api/v1/projects/{test_project['id']}/class-map")
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
 class TestProjectDelete:
     """Tests for deleting projects."""
 

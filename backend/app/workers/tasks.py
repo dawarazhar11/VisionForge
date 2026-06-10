@@ -6,7 +6,7 @@ import json
 import time
 import asyncio
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from celery import Task
 from loguru import logger
 from sqlalchemy.orm import Session
@@ -148,6 +148,39 @@ def update_job_status(
                 job.metrics_json = result_data
         db.commit()
         logger.info(f"Job {job_id} status updated: {status} (progress: {progress}%)")
+
+
+def resolve_training_class_names(
+    config: Dict[str, Any],
+    render_metrics: Optional[Dict[str, Any]],
+    features: Optional[list] = None,
+) -> tuple:
+    """
+    Resolve class names for a training run.
+
+    Priority: explicit job config > render job output > STEP part features.
+    The render job's class_names match the YOLO label indices it generated,
+    so they take priority for .blend datasets.
+
+    Returns:
+        (class_names or None, source) where source is one of
+        'config', 'render_job', 'part_features', or 'none'.
+    """
+    if config.get("class_names"):
+        return list(config["class_names"]), "config"
+
+    if render_metrics and render_metrics.get("class_names"):
+        return list(render_metrics["class_names"]), "render_job"
+
+    if features:
+        present_indices = sorted({f.class_index for f in features})
+        names = [
+            FEATURE_CLASS_ORDER[i] for i in present_indices if i < len(FEATURE_CLASS_ORDER)
+        ]
+        if names:
+            return names, "part_features"
+
+    return None, "none"
 
 
 @celery_app.task(bind=True, base=DatabaseTask, name="app.workers.tasks.echo_task")
@@ -482,21 +515,22 @@ def train_yolo_model(
 
         logger.info(f"Found dataset at: {dataset_dir}")
 
-        # Derive class names from PartFeature records for this project
         features = (
             self.db.query(PartFeature)
             .filter(PartFeature.project_id == project_id)
             .all()
         )
-        if features:
-            present_indices = sorted({f.class_index for f in features})
-            dynamic_class_names = [
-                FEATURE_CLASS_ORDER[i] for i in present_indices if i < len(FEATURE_CLASS_ORDER)
-            ]
-            config = {**config, "class_names": dynamic_class_names}
-            logger.info(f"Using dynamic class names from part features: {dynamic_class_names}")
+        class_names, source = resolve_training_class_names(
+            config, render_job.metrics_json, features
+        )
+        if class_names:
+            config = {**config, "class_names": class_names}
+            logger.info(f"Using class names from {source}: {class_names}")
         else:
-            logger.warning(f"No PartFeature records for project {project_id}; using config class_names")
+            logger.warning(
+                f"No class names from config, render job, or PartFeatures for project "
+                f"{project_id}; data.yaml will use auto-detected names"
+            )
 
         # Validate training configuration
         try:
