@@ -15,6 +15,29 @@ from app.training.config import (
 from app.training.dataset import YOLODatasetPreparer
 
 
+def resolve_training_device(requested: str) -> str:
+    """
+    Resolve the training device, falling back when the requested
+    accelerator is absent (e.g. 'device=0' on a CPU-only container).
+
+    Order: requested CUDA device if available > MPS (Apple) > cpu.
+    """
+    if requested == "cpu":
+        return "cpu"
+
+    import torch
+
+    if torch.cuda.is_available():
+        return requested
+
+    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+        logger.warning(f"CUDA device '{requested}' unavailable; using MPS")
+        return "mps"
+
+    logger.warning(f"CUDA device '{requested}' unavailable; falling back to CPU")
+    return "cpu"
+
+
 class YOLOTrainer:
     """
     YOLO model training orchestrator.
@@ -180,7 +203,7 @@ class YOLOTrainer:
             "epochs": self.config.epochs,
             "batch": self.config.batch_size,
             "imgsz": self.config.imgsz,
-            "device": self.config.device,
+            "device": resolve_training_device(self.config.device),
             "workers": self.config.workers,
             "optimizer": self.config.optimizer,
             "lr0": self.config.lr0,
