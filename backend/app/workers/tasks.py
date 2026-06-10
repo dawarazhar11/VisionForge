@@ -312,6 +312,16 @@ def render_synthetic_data(
 
         # ── Handle result ─────────────────────────────────────────────────────
         if render_result.success:
+            # Annotated previews are a convenience — never fail the job on them
+            try:
+                from app.services.preview import generate_render_previews
+                extra["preview_count"] = generate_render_previews(
+                    render_result.output_dir,
+                    class_names=extra.get("class_names"),
+                )
+            except Exception as exc:
+                logger.warning(f"Preview generation failed: {exc}")
+
             result = {
                 "project_id":      project_id,
                 "output_dir":      render_result.output_dir,
