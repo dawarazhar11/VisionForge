@@ -149,6 +149,31 @@ class ApiService {
     }
   }
 
+  /// Get class names configured for a project (from its class map).
+  /// Returns null when the project has no explicit class map set.
+  Future<List<String>?> getProjectClassNames(String token, String projectId) async {
+    final response = await _client.get(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId/class-map'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final names = data['class_names'];
+      if (names is List) {
+        return names.map((n) => n.toString()).toList();
+      }
+      return null;
+    } else if (response.statusCode == 404) {
+      return null;
+    } else {
+      throw Exception('Failed to load project class map');
+    }
+  }
+
   /// Create new project
   Future<Map<String, dynamic>> createProject(
     String token,

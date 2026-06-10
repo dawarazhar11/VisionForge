@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import '../models/project.dart';
+import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
 
 class AnnotationScreen extends StatefulWidget {
   final Project project;
@@ -27,19 +31,59 @@ class _AnnotationScreenState extends State<AnnotationScreen> {
   Offset? _drawStart;
   Offset? _drawEnd;
 
-  final List<String> _classes = [
-    'object',
-    'small_screw',
-    'large_screw',
-    'bracket',
-    'hole',
-    'metal_part',
-  ];
+  // Populated from the project's class map, the active model's labels,
+  // or a generic default — in that order.
+  List<String> _classes = ['object'];
 
   @override
   void initState() {
     super.initState();
     _initializeCamera();
+    _loadClassNames();
+  }
+
+  Future<void> _loadClassNames() async {
+    List<String>? names;
+
+    try {
+      final token =
+          Provider.of<AuthProvider>(context, listen: false).accessToken;
+      if (token != null) {
+        names = await ApiService()
+            .getProjectClassNames(token, widget.project.id);
+      }
+    } catch (e) {
+      print('Could not fetch project class map: $e');
+    }
+
+    names ??= await _loadActiveModelLabels();
+
+    if (names != null && names.isNotEmpty && mounted) {
+      setState(() {
+        _classes = names!;
+        _selectedClass = _classes.first;
+      });
+    }
+  }
+
+  /// Fallback: labels.txt downloaded alongside the active TFLite model.
+  Future<List<String>?> _loadActiveModelLabels() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final modelPath = prefs.getString('active_model_path');
+      if (modelPath == null) return null;
+
+      final labelsFile = File('${File(modelPath).parent.path}/labels.txt');
+      if (!await labelsFile.exists()) return null;
+
+      final lines = await labelsFile.readAsLines();
+      final labels =
+          lines.map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+      return labels.isEmpty ? null : labels;
+    } catch (e) {
+      print('Could not load active model labels: $e');
+      return null;
+    }
   }
 
   Future<void> _initializeCamera() async {
