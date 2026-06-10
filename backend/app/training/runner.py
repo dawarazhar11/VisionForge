@@ -15,6 +15,23 @@ from app.training.config import (
 from app.training.dataset import YOLODatasetPreparer
 
 
+def detect_label_task(labels_dir: Path) -> str:
+    """
+    Infer the YOLO task from label files.
+
+    Detection rows have exactly 5 columns (class x y w h); segmentation
+    rows carry polygon points (>5 columns). Defaults to 'detect'.
+    """
+    for label_file in sorted(Path(labels_dir).glob("*.txt")):
+        for line in label_file.read_text().splitlines():
+            parts = line.split()
+            if len(parts) > 5:
+                return "segment"
+            if len(parts) == 5:
+                return "detect"
+    return "detect"
+
+
 def resolve_training_device(requested: str) -> str:
     """
     Resolve the training device, falling back when the requested
@@ -174,13 +191,32 @@ class YOLOTrainer:
 
         logger.info(f"Initializing YOLO model: {self.config.model.value}")
 
+        # Match the model task to the dataset's label format: segmentation
+        # weights on a boxes-only dataset (or vice versa) abort in Ultralytics.
+        model_name = self.config.model.value
+        if self.data_yaml_path is not None:
+            train_labels = self.data_yaml_path.parent / "train" / "labels"
+            task = detect_label_task(train_labels)
+            if task == "detect" and "-seg" in model_name:
+                model_name = model_name.replace("-seg", "")
+                logger.info(
+                    f"Dataset has detection labels; using {model_name} "
+                    f"instead of {self.config.model.value}"
+                )
+            elif task == "segment" and "-seg" not in model_name:
+                model_name = model_name.replace(".pt", "-seg.pt")
+                logger.info(
+                    f"Dataset has segmentation labels; using {model_name} "
+                    f"instead of {self.config.model.value}"
+                )
+
         # Load pretrained or scratch model
         if self.config.pretrained:
-            model_path = self.config.model.value  # e.g., "yolo11n-seg.pt"
+            model_path = model_name  # e.g., "yolo11n-seg.pt"
             logger.info(f"Loading pretrained weights: {model_path}")
         else:
             # For training from scratch, use .yaml config instead of .pt
-            model_path = self.config.model.value.replace(".pt", ".yaml")
+            model_path = model_name.replace(".pt", ".yaml")
             logger.info(f"Training from scratch with config: {model_path}")
 
         self.model = YOLO(model_path)
