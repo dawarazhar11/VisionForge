@@ -405,7 +405,7 @@ class ApiService {
   /// 2. Create a rendering job via /jobs/
   Future<Map<String, dynamic>> uploadBlenderFile({
     required String token,
-    required String projectId,
+    required String projectName,
     required String blenderFilePath,
     int numRenders = 100,
     int resolutionX = 640,
@@ -425,9 +425,10 @@ class ApiService {
 
       print('📁 File: $fileName (${(fileLength / 1024 / 1024).toStringAsFixed(2)} MB)');
 
-      // Step 1: Upload the Blender file to /projects/upload using Dio
+      // Step 1: Upload the Blender file to /projects/upload using Dio.
+      // This endpoint CREATES a project from (name, file) and returns its id.
       final formData = FormData.fromMap({
-        'project_id': projectId,
+        'name': projectName,
         'file': await MultipartFile.fromFile(
           blenderFilePath,
           filename: fileName,
@@ -454,23 +455,24 @@ class ApiService {
       }
 
       final uploadResult = uploadResponse.data;
-      final fileId = uploadResult['file_id'] ?? uploadResult['id'];
+      // The created project's id — render must target THIS project (which
+      // owns the uploaded .blend), not any pre-existing one.
+      final newProjectId = uploadResult['id'];
 
-      print('✅ Step 1 complete: File uploaded with ID: $fileId');
+      print('✅ Step 1 complete: project created with file: $newProjectId');
       print('📋 Step 2: Creating rendering job...');
 
       // Step 2: Create a rendering job
       final jobResponse = await _dio.post(
         '${ApiConfig.baseUrl}${ApiConfig.jobs}/',
         data: {
-          'project_id': projectId,
+          'project_id': newProjectId,
           'job_type': 'render',
           'config': {
-            'file_id': fileId,
             'num_renders': numRenders,
             'resolution_x': resolutionX,
             'resolution_y': resolutionY,
-            'samples': samples,
+            'eevee_samples': samples,
             'randomize_camera': randomizeCamera,
             'randomize_lighting': randomizeLighting,
           },
@@ -492,7 +494,7 @@ class ApiService {
       print('✅ Step 2 complete: Rendering job created with ID: ${jobResult['id']}');
 
       return {
-        'file_id': fileId,
+        'project_id': newProjectId,
         'job_id': jobResult['id'],
         'job': jobResult,
       };

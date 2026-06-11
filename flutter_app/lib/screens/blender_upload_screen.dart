@@ -108,7 +108,7 @@ class _BlenderUploadScreenState extends State<BlenderUploadScreen> {
       // Upload Blender file and generate synthetic dataset
       await apiService.uploadBlenderFile(
         token: token,
-        projectId: widget.project.id,
+        projectName: widget.project.name,
         blenderFilePath: _blenderFilePath!,
         numRenders: _numRenders,
         resolutionX: _resolutionX,
