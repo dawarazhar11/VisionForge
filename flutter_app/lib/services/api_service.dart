@@ -420,14 +420,16 @@ class ApiService {
     }
   }
 
-  /// Get all training jobs
+  /// Get jobs, optionally filtered by project.
+  /// The backend exposes filtering via /jobs/?project_id=… (there is no
+  /// /projects/{id}/training route — that path 404s).
   Future<List<dynamic>> getTrainingJobs(String token, [String? projectId]) async {
-    final url = projectId != null
-      ? '${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId/training'
-      : '${ApiConfig.baseUrl}${ApiConfig.jobs}/';
+    final uri = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.jobs}/').replace(
+      queryParameters: projectId != null ? {'project_id': projectId} : null,
+    );
 
     final response = await _client.get(
-      Uri.parse(url),
+      uri,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -436,7 +438,6 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      // Backend returns list directly or wrapped in 'jobs' key
       if (data is List) {
         return data;
       } else if (data is Map && data.containsKey('jobs')) {
@@ -444,7 +445,7 @@ class ApiService {
       }
       return [];
     } else {
-      throw Exception('Failed to load training jobs');
+      throw Exception('Failed to load jobs (${response.statusCode})');
     }
   }
 

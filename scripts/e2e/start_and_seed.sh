@@ -17,6 +17,9 @@ export REDIS_URL="redis://localhost:6379/0"
 export CELERY_BROKER_URL="redis://localhost:6379/0"
 export CELERY_RESULT_BACKEND="redis://localhost:6379/1"
 export SECRET_KEY="dev-secret-key-change-in-production"
+# Long-lived access token for local device testing (default 15 min expired
+# mid-session, 401-ing every call). Production keeps the short default.
+export ACCESS_TOKEN_EXPIRE_MINUTES="1440"
 export UPLOAD_DIR="$REPO_ROOT/backend/storage/uploads"
 export DATASET_DIR="$REPO_ROOT/backend/storage/datasets"
 export MODEL_DIR="$REPO_ROOT/backend/storage/models"
@@ -30,10 +33,10 @@ echo "Starting native Celery worker + FastAPI..."
 # the main process so MPS training works on macOS. (Containers use prefork +
 # CPU/CUDA, which are fork-safe.)
 ( cd backend && "$PY" -m celery -A app.celery_app.celery_app worker \
-    --loglevel=warning --pool=solo -Q rendering,training,default,celery ) &
+    --loglevel=info --pool=solo -Q rendering,training,default,celery ) &
 WORKER_PID=$!
 ( cd backend && "$PY" -m uvicorn app.main:app --host 0.0.0.0 --port 8002 \
-    --log-level warning ) &
+    --log-level info ) &
 API_PID=$!
 trap 'kill $WORKER_PID $API_PID 2>/dev/null' EXIT
 
