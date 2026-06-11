@@ -3,7 +3,8 @@ import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/detection_provider.dart';
 import 'screens/login_screen.dart';
-import 'screens/home_screen.dart';
+import 'screens/app_shell.dart';
+import 'theme/app_theme.dart';
 import 'utils/api_config.dart';
 
 void main() {
@@ -21,25 +22,10 @@ class YoloVisionApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => DetectionProvider()),
       ],
       child: MaterialApp(
-        title: 'YOLO Vision',
+        title: 'VisionForge',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.blue,
-            brightness: Brightness.light,
-          ),
-          useMaterial3: true,
-          appBarTheme: const AppBarTheme(
-            centerTitle: true,
-            elevation: 0,
-          ),
-          elevatedButtonTheme: ElevatedButtonThemeData(
-            style: ElevatedButton.styleFrom(
-              elevation: 2,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
-          ),
-        ),
+        theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
         home: const AppInitializer(),
       ),
     );
@@ -118,7 +104,7 @@ class _AppInitializerState extends State<AppInitializer> {
     return Consumer<AuthProvider>(
       builder: (context, authProvider, _) {
         if (authProvider.isAuthenticated) {
-          return const HomeScreen();
+          return const AppShell();
         } else {
           return const LoginScreen();
         }
