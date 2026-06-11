@@ -4,6 +4,7 @@ import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../models/project.dart';
 import 'project_detail_screen.dart';
+import 'new_project_screen.dart';
 
 class ProjectsScreen extends StatefulWidget {
   const ProjectsScreen({super.key});
@@ -203,10 +204,16 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                         );
                       },
                     ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _createProject,
-        tooltip: 'Create Project',
-        child: const Icon(Icons.add),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          await Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const NewProjectScreen()),
+          );
+          _loadProjects();
+        },
+        tooltip: 'New Project',
+        icon: const Icon(Icons.add),
+        label: const Text('New Project'),
       ),
     );
   }

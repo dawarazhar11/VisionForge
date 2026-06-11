@@ -1,6 +1,7 @@
 """
 Authentication service - Password hashing and JWT token management.
 """
+import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
@@ -116,7 +117,8 @@ def get_user_by_email(db: Session, email: str) -> Optional[User]:
 
 def get_user_by_id(db: Session, user_id: str) -> Optional[User]:
     """Get user by ID."""
-    return db.query(User).filter(User.id == user_id).first()
+    uid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+    return db.query(User).filter(User.id == uid).first()
 
 
 def create_user(db: Session, email: str, password: str, full_name: Optional[str] = None) -> User:

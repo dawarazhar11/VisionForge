@@ -36,7 +36,14 @@ class AuthProvider with ChangeNotifier {
         _authToken = AuthToken.fromJson(jsonDecode(tokenJson));
         _apiService.setAuthToken(_authToken!);
 
-        // TODO: Fetch user profile
+        // Proactively refresh: the stored access token may have expired
+        // (short-lived), but the refresh token lasts much longer. This
+        // heals an otherwise-stranded session so calls don't 401.
+        try {
+          await refreshAccessToken();
+        } catch (_) {
+          // refreshAccessToken() handles its own logout on hard failure
+        }
       } else {
         print('🔐 AuthProvider: No stored token found');
       }

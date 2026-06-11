@@ -1,12 +1,15 @@
 """
 Jobs API endpoints - Create and manage async training jobs.
 """
+import asyncio
+import json
 import uuid
 import math
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session, joinedload
+from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session, joinedload, sessionmaker
 from sqlalchemy import func
 from loguru import logger
 
@@ -18,6 +21,49 @@ from app.schemas.job import JobCreate, JobResponse, JobListResponse
 from app.workers.tasks import echo_task, render_synthetic_data, train_yolo_model
 
 router = APIRouter()
+
+TERMINAL_JOB_STATUSES = frozenset({"SUCCESS", "FAILED", "CANCELLED"})
+SSE_POLL_INTERVAL_SECONDS = 1.5
+
+
+def _format_sse_event(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+def _job_progress_payload(job: TrainingJob) -> dict:
+    return {
+        "id": str(job.id),
+        "status": job.status,
+        "progress": job.progress,
+        "stage": job.stage,
+        "metrics": job.metrics_json,
+        "error_message": job.error_message,
+    }
+
+
+async def _job_event_generator(job_id: uuid.UUID, session_factory):
+    """Poll TrainingJob and yield SSE progress events until terminal state."""
+    while True:
+        db = session_factory()
+        try:
+            job = (
+                db.query(TrainingJob)
+                .options(joinedload(TrainingJob.project))
+                .filter(TrainingJob.id == job_id)
+                .first()
+            )
+            if not job:
+                yield _format_sse_event("error", {"message": "Job not found"})
+                break
+
+            yield _format_sse_event("progress", _job_progress_payload(job))
+
+            if job.status in TERMINAL_JOB_STATUSES:
+                break
+        finally:
+            db.close()
+
+        await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
 
 
 @router.post("/", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
@@ -64,6 +110,13 @@ def create_job(
             detail="Not authorized to create jobs for this project",
         )
 
+    valid_job_types = {"test", "render", "train"}
+    if job_data.job_type not in valid_job_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid job type: {job_data.job_type}. Valid types: test, render, train",
+        )
+
     # Create job in database
     job_id = uuid.uuid4()
     job = TrainingJob(
@@ -98,14 +151,6 @@ def create_job(
                 job_id=str(job_id),
                 config=job_data.config or {},
             )
-        else:
-            db.delete(job)
-            db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid job type: {job_data.job_type}. Valid types: test, render, train",
-            )
-
         # Store Celery task ID in metrics_json
         job.metrics_json = {"celery_task_id": task.id}
         db.commit()
@@ -115,6 +160,8 @@ def create_job(
             f"Job {job_id} created: type={job_data.job_type}, celery_task={task.id}"
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to create Celery task: {e}")
         db.delete(job)
@@ -228,6 +275,139 @@ def get_job(
         )
 
     return job
+
+
+def _get_owned_job_previews_dir(
+    job_id: uuid.UUID, db: Session, current_user: User
+):
+    """Resolve the previews directory for a job the user owns, or raise."""
+    from pathlib import Path
+    from app.services.preview import PREVIEW_DIR_NAME
+
+    job = (
+        db.query(TrainingJob)
+        .options(joinedload(TrainingJob.project))
+        .filter(TrainingJob.id == job_id)
+        .first()
+    )
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    if job.project.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this job",
+        )
+
+    output_dir = (job.metrics_json or {}).get("output_dir")
+    if not output_dir:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job has no rendered output",
+        )
+
+    previews_dir = Path(output_dir) / PREVIEW_DIR_NAME
+    if not previews_dir.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No previews available for this job",
+        )
+
+    return previews_dir
+
+
+@router.get("/{job_id}/previews")
+def list_job_previews(
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    List annotated preview images for a render job.
+
+    Previews show the rendered images with their auto-generated YOLO
+    boxes drawn on, for visual verification of the dataset.
+    """
+    previews_dir = _get_owned_job_previews_dir(job_id, db, current_user)
+    names = sorted(p.name for p in previews_dir.glob("*.png"))
+    return {"job_id": str(job_id), "count": len(names), "previews": names}
+
+
+@router.get("/{job_id}/previews/{filename}")
+def get_job_preview(
+    job_id: uuid.UUID,
+    filename: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Download a single annotated preview image."""
+    from fastapi.responses import FileResponse
+    from pathlib import Path
+
+    # Reject anything that isn't a bare PNG filename (no path traversal)
+    if Path(filename).name != filename or not filename.endswith(".png"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid preview filename",
+        )
+
+    previews_dir = _get_owned_job_previews_dir(job_id, db, current_user)
+    path = previews_dir / filename
+    if not path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Preview not found",
+        )
+
+    return FileResponse(path=str(path), media_type="image/png", filename=filename)
+
+
+@router.get("/{job_id}/stream")
+async def stream_job_progress(
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Stream job progress via Server-Sent Events.
+
+    Polls the TrainingJob record every 1-2 seconds and emits status,
+    progress, metrics, and error_message until a terminal state is reached.
+    """
+    job = (
+        db.query(TrainingJob)
+        .options(joinedload(TrainingJob.project))
+        .filter(TrainingJob.id == job_id)
+        .first()
+    )
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    if job.project.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this job",
+        )
+
+    session_factory = sessionmaker(bind=db.get_bind())
+
+    return StreamingResponse(
+        _job_event_generator(job_id, session_factory),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)

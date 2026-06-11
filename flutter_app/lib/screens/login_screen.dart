@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../utils/api_config.dart';
 import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -15,15 +16,35 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _fullNameController = TextEditingController();
+  final _backendUrlController = TextEditingController();
 
   bool _isLoginMode = true;
+  bool _showBackendField = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _backendUrlController.text = ApiConfig.baseUrl;
+  }
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
     _fullNameController.dispose();
+    _backendUrlController.dispose();
     super.dispose();
+  }
+
+  Future<void> _saveBackendUrl() async {
+    await ApiConfig.setBaseUrlOverride(_backendUrlController.text);
+    if (mounted) {
+      _backendUrlController.text = ApiConfig.baseUrl;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Backend set to ${ApiConfig.baseUrl}')),
+      );
+      setState(() => _showBackendField = false);
+    }
   }
 
   Future<void> _submit() async {
@@ -87,7 +108,46 @@ class _LoginScreenState extends State<LoginScreen> {
                         style: Theme.of(context).textTheme.bodyMedium,
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 48),
+                      const SizedBox(height: 24),
+
+                      // Backend URL (collapsible) — for device/local testing
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          icon: Icon(
+                            _showBackendField
+                                ? Icons.expand_less
+                                : Icons.settings_ethernet,
+                            size: 18,
+                          ),
+                          label: Text(
+                            _showBackendField ? 'Hide backend' : 'Backend URL',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                          onPressed: () => setState(
+                              () => _showBackendField = !_showBackendField),
+                        ),
+                      ),
+                      if (_showBackendField) ...[
+                        TextFormField(
+                          controller: _backendUrlController,
+                          keyboardType: TextInputType.url,
+                          autocorrect: false,
+                          decoration: InputDecoration(
+                            labelText: 'Backend URL',
+                            hintText: 'http://192.168.0.207:8002',
+                            border: const OutlineInputBorder(),
+                            prefixIcon: const Icon(Icons.dns),
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.check),
+                              onPressed: _saveBackendUrl,
+                            ),
+                          ),
+                          onFieldSubmitted: (_) => _saveBackendUrl(),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      const SizedBox(height: 16),
 
                       // Email field
                       TextFormField(

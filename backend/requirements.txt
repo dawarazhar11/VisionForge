@@ -33,7 +33,22 @@ torch==2.9.1
 torchvision==0.24.1
 opencv-python==4.12.0.88
 PyYAML==6.0.3
-numpy==2.2.6
+numpy==2.1.3
 scipy==1.16.3
 matplotlib==3.10.7
+
+# TFLite export toolchain — the full set Ultralytics needs to convert
+# PyTorch → ONNX → TF SavedModel → TFLite. These MUST be pinned/baked in:
+# Ultralytics otherwise pip-installs them at first export, which is slow,
+# needs internet, and fails entirely where its pip subprocess isn't on PATH
+# (e.g. a uvicorn/celery process). Versions below are a verified-working set.
+tensorflow==2.21.0
+tf-keras==2.21.0
+onnx==1.19.1
+onnx2tf==1.28.8
+onnxslim==0.1.94
+onnxruntime==1.26.0
+sng4onnx==2.0.1
+onnx-graphsurgeon==0.6.1
+ai-edge-litert==1.3.0
 pillow==12.0.0

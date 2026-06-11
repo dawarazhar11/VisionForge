@@ -1,9 +1,12 @@
 """
 Tests for job management endpoints.
 """
+import uuid
 import pytest
 from fastapi import status
 from unittest.mock import Mock, patch
+
+from app.models.training_job import TrainingJob
 
 
 class TestJobCreation:
@@ -41,7 +44,7 @@ class TestJobCreation:
         job_data = {
             "project_id": test_project["id"],
             "job_type": "render",
-            "config": {"num_images": 100}
+            "config": {"num_renders": 100}
         }
 
         mock_task.return_value.id = "mock-task-id"
@@ -300,3 +303,58 @@ class TestJobCancellation:
         )
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+class TestJobStream:
+    """Tests for SSE job progress streaming."""
+
+    @patch("app.workers.tasks.echo_task.delay")
+    def test_stream_job_progress_terminal(self, mock_task, client, auth_headers, test_project, db):
+        """Test SSE stream emits progress and stops on terminal status."""
+        mock_task.return_value.id = "mock-task-id"
+
+        create_response = client.post(
+            "/api/v1/jobs/",
+            json={
+                "project_id": test_project["id"],
+                "job_type": "test",
+                "config": {},
+            },
+            headers=auth_headers,
+        )
+        job_id = create_response.json()["id"]
+
+        job = db.query(TrainingJob).filter(TrainingJob.id == uuid.UUID(job_id)).first()
+        job.status = "SUCCESS"
+        job.progress = 100
+        db.commit()
+
+        with client.stream(
+            "GET",
+            f"/api/v1/jobs/{job_id}/stream",
+            headers=auth_headers,
+        ) as response:
+            assert response.status_code == status.HTTP_200_OK
+            assert response.headers["content-type"].startswith("text/event-stream")
+
+            body = "".join(response.iter_text())
+            assert "event: progress" in body
+            assert '"status": "SUCCESS"' in body
+            assert '"progress": 100' in body
+
+    def test_stream_nonexistent_job(self, client, auth_headers):
+        """Test streaming non-existent job returns 404."""
+        fake_id = "00000000-0000-0000-0000-000000000000"
+        response = client.get(
+            f"/api/v1/jobs/{fake_id}/stream",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_stream_job_without_auth(self, client):
+        """Test streaming job without authentication fails."""
+        fake_id = "00000000-0000-0000-0000-000000000000"
+        response = client.get(f"/api/v1/jobs/{fake_id}/stream")
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED

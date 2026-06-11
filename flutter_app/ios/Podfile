@@ -31,6 +31,11 @@ target 'Runner' do
   use_frameworks!
   use_modular_headers!
 
+  # TensorFlowLiteSwift's trunk podspec sources the multi-GB tensorflow.git
+  # repo, which reliably stalls. Local podspec fetches the same commit as a
+  # ~90 MB GitHub tarball instead.
+  pod 'TensorFlowLiteSwift', :podspec => './TensorFlowLiteSwift.podspec.json'
+
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 
   target 'RunnerTests' do

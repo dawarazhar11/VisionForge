@@ -41,5 +41,10 @@ class TrainingJob(Base):
         cascade="all, delete-orphan"
     )
 
+    @property
+    def result_data(self):
+        """Task result payload — workers merge results into metrics_json."""
+        return self.metrics_json
+
     def __repr__(self):
         return f"<TrainingJob(id={self.id}, status={self.status}, progress={self.progress}%)>"

@@ -102,20 +102,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configure rate limiting (skip in test mode)
+# Configure rate limiting (skip in test mode).
+# Defaults are generous because a single app client legitimately makes many
+# requests: job polling every few seconds, preview-image grids (one request
+# per image), and screen navigation. 60/min throttled real usage into 429s.
+# Tune down for public/multi-tenant deployments via env.
 import os
 if not os.getenv("TESTING"):
     app.add_middleware(
         RateLimitMiddleware,
-        requests_per_minute=60,
-        burst_size=10,
+        requests_per_minute=int(os.getenv("RATE_LIMIT_PER_MINUTE", "600")),
+        burst_size=int(os.getenv("RATE_LIMIT_BURST", "120")),
         exclude_paths=["/health", "/docs", "/redoc", "/openapi.json", "/api/v1/monitoring"]
     )
 
     app.add_middleware(
         AuthRateLimitMiddleware,
-        login_attempts_per_minute=5,
-        register_attempts_per_minute=3
+        login_attempts_per_minute=int(os.getenv("AUTH_RATE_LIMIT_LOGIN", "20")),
+        register_attempts_per_minute=int(os.getenv("AUTH_RATE_LIMIT_REGISTER", "10"))
     )
 
 

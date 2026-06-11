@@ -22,15 +22,35 @@ class ProjectUpdate(BaseModel):
     """Schema for updating project metadata."""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
+    class_map: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Object→class mapping used when rendering this project. Either a "
+            "plain {object_name: class_index} dict, or "
+            "{'object_to_class': {...}, 'class_names': [...]}."
+        ),
+    )
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "name": "Updated Assembly Project",
-                "description": "Modified description for mechanical component assembly"
+                "description": "Modified description for mechanical component assembly",
+                "class_map": {
+                    "object_to_class": {"gear_housing": 0, "shaft": 1},
+                    "class_names": ["housing", "shaft"]
+                }
             }
         }
     }
+
+
+class ProjectClassMapResponse(BaseModel):
+    """Schema for a project's resolved class map."""
+    project_id: UUID
+    object_to_class: Dict[str, int]
+    class_names: List[str]
+    source: str
 
 
 class ProjectResponse(ProjectBase):

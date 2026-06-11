@@ -38,8 +38,8 @@ Never commit directly to `master`. Never force-push `master`.
 - Add comment with GitHub PR URL + merge commit SHA
 - If a feature batch closes a milestone, create a `[Done summary]` issue listing delivered items and PR links
 
-**Already shipped** — see Done issues DAW-93 through DAW-99 in Linear for baseline on `master`.
+**Already shipped** — baseline DAW-93–99, plus DAW-36–39, DAW-76 (Flutter/API wiring) and DAW-119 (generic .blend render pipeline). See Done issues in Linear.
 
 ## Priority open issues
 
-MVP path: DAW-37 → DAW-38 → DAW-76 → DAW-71 → DAW-33
+MVP path (M1, as of 2026-06-10): DAW-33 (in progress, urgent) is the umbrella E2E validation; its remaining verifications are DAW-32 (Celery render), DAW-34 (TFLite export), DAW-92 (dynamic class labels), then DAW-73 (on-device iOS camera detection). Android verification was canceled (DAW-71) and deferred to DAW-121 (M5).

@@ -2,7 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// API configuration for backend communication
 class ApiConfig {
-  static const String defaultBaseUrl = 'http://100.108.186.54:8002';
+  static const String defaultBaseUrl = 'http://192.168.0.207:8002';
   static const String backendUrlPrefKey = 'backendUrlOverride';
 
   static String? _overrideBaseUrl;

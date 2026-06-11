@@ -149,6 +149,153 @@ class ApiService {
     }
   }
 
+  /// Get class names configured for a project (from its class map).
+  /// Returns null when the project has no explicit class map set.
+  Future<List<String>?> getProjectClassNames(String token, String projectId) async {
+    final response = await _client.get(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId/class-map'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final names = data['class_names'];
+      if (names is List) {
+        return names.map((n) => n.toString()).toList();
+      }
+      return null;
+    } else if (response.statusCode == 404) {
+      return null;
+    } else {
+      throw Exception('Failed to load project class map');
+    }
+  }
+
+  /// Full class map for a project: {object_to_class, class_names, source}.
+  /// Returns null when no explicit class map is set (404).
+  Future<Map<String, dynamic>?> getProjectClassMap(
+      String token, String projectId) async {
+    final response = await _client.get(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId/class-map'),
+      headers: _authJson(token),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else if (response.statusCode == 404) {
+      return null;
+    }
+    throw Exception('Failed to load class map (${response.statusCode})');
+  }
+
+  /// Set/override a project's class map via PATCH /projects/{id}.
+  /// [classMap] is either {object: index} or
+  /// {object_to_class:{...}, class_names:[...]}.
+  Future<void> setProjectClassMap(
+      String token, String projectId, Map<String, dynamic> classMap) async {
+    final response = await _client.patch(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId'),
+      headers: _authJson(token),
+      body: jsonEncode({'class_map': classMap}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to set class map (${response.statusCode})');
+    }
+  }
+
+  /// Recognized manufacturing features for a STEP project.
+  /// Returns {project_id, features:[...], total, class_names:[...]}.
+  Future<Map<String, dynamic>?> getProjectFeatures(
+      String token, String projectId) async {
+    final response = await _client.get(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId/features'),
+      headers: _authJson(token),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else if (response.statusCode == 404) {
+      return null;
+    }
+    throw Exception('Failed to load features (${response.statusCode})');
+  }
+
+  /// Upload any supported design file (.step/.stp/.blend/.obj/.stl/.fbx).
+  /// Creates a project from (name, file) and returns the project map.
+  Future<Map<String, dynamic>> uploadProjectFile({
+    required String token,
+    required String name,
+    required String filePath,
+    Function(int sent, int total)? onProgress,
+  }) async {
+    final fileName = filePath.split(Platform.pathSeparator).last;
+    final formData = FormData.fromMap({
+      'name': name,
+      'file': await MultipartFile.fromFile(filePath, filename: fileName),
+    });
+    final resp = await _dio.post(
+      '${ApiConfig.baseUrl}${ApiConfig.projects}/upload',
+      data: formData,
+      options: Options(headers: {'Authorization': 'Bearer $token'}),
+      onSendProgress: (s, t) => onProgress?.call(s, t),
+    );
+    if (resp.statusCode != 201 && resp.statusCode != 200) {
+      throw Exception('Upload failed (${resp.statusCode})');
+    }
+    return Map<String, dynamic>.from(resp.data as Map);
+  }
+
+  /// List annotated preview filenames for a render job.
+  Future<List<String>> getJobPreviews(String token, String jobId) async {
+    final response = await _client.get(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.jobs}/$jobId/previews'),
+      headers: _authJson(token),
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final list = data['previews'];
+      return list is List ? list.map((e) => e.toString()).toList() : [];
+    } else if (response.statusCode == 404) {
+      return [];
+    }
+    throw Exception('Failed to list previews (${response.statusCode})');
+  }
+
+  /// Full URL for a single annotated preview image (needs auth header).
+  String jobPreviewUrl(String jobId, String filename) =>
+      '${ApiConfig.baseUrl}${ApiConfig.jobs}/$jobId/previews/$filename';
+
+  /// Class names for a trained model (JSON).
+  Future<List<String>> getModelClassNames(String token, String modelId) async {
+    final response = await _client.get(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.models}/$modelId/class-names'),
+      headers: _authJson(token),
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final list = data['class_names'];
+      return list is List ? list.map((e) => e.toString()).toList() : [];
+    }
+    return [];
+  }
+
+  /// Cancel a job.
+  Future<void> cancelJob(String token, String jobId) async {
+    final response = await _client.delete(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.jobs}/$jobId'),
+      headers: _authJson(token),
+    );
+    if (response.statusCode != 204 && response.statusCode != 200) {
+      throw Exception('Failed to cancel job (${response.statusCode})');
+    }
+  }
+
+  Map<String, String> _authJson(String token) => {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      };
+
   /// Create new project
   Future<Map<String, dynamic>> createProject(
     String token,
@@ -273,14 +420,16 @@ class ApiService {
     }
   }
 
-  /// Get all training jobs
+  /// Get jobs, optionally filtered by project.
+  /// The backend exposes filtering via /jobs/?project_id=… (there is no
+  /// /projects/{id}/training route — that path 404s).
   Future<List<dynamic>> getTrainingJobs(String token, [String? projectId]) async {
-    final url = projectId != null
-      ? '${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId/training'
-      : '${ApiConfig.baseUrl}${ApiConfig.jobs}/';
+    final uri = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.jobs}/').replace(
+      queryParameters: projectId != null ? {'project_id': projectId} : null,
+    );
 
     final response = await _client.get(
-      Uri.parse(url),
+      uri,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -289,7 +438,6 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      // Backend returns list directly or wrapped in 'jobs' key
       if (data is List) {
         return data;
       } else if (data is Map && data.containsKey('jobs')) {
@@ -297,7 +445,7 @@ class ApiService {
       }
       return [];
     } else {
-      throw Exception('Failed to load training jobs');
+      throw Exception('Failed to load jobs (${response.statusCode})');
     }
   }
 
@@ -380,7 +528,7 @@ class ApiService {
   /// 2. Create a rendering job via /jobs/
   Future<Map<String, dynamic>> uploadBlenderFile({
     required String token,
-    required String projectId,
+    required String projectName,
     required String blenderFilePath,
     int numRenders = 100,
     int resolutionX = 640,
@@ -400,9 +548,10 @@ class ApiService {
 
       print('📁 File: $fileName (${(fileLength / 1024 / 1024).toStringAsFixed(2)} MB)');
 
-      // Step 1: Upload the Blender file to /projects/upload using Dio
+      // Step 1: Upload the Blender file to /projects/upload using Dio.
+      // This endpoint CREATES a project from (name, file) and returns its id.
       final formData = FormData.fromMap({
-        'project_id': projectId,
+        'name': projectName,
         'file': await MultipartFile.fromFile(
           blenderFilePath,
           filename: fileName,
@@ -429,23 +578,24 @@ class ApiService {
       }
 
       final uploadResult = uploadResponse.data;
-      final fileId = uploadResult['file_id'] ?? uploadResult['id'];
+      // The created project's id — render must target THIS project (which
+      // owns the uploaded .blend), not any pre-existing one.
+      final newProjectId = uploadResult['id'];
 
-      print('✅ Step 1 complete: File uploaded with ID: $fileId');
+      print('✅ Step 1 complete: project created with file: $newProjectId');
       print('📋 Step 2: Creating rendering job...');
 
       // Step 2: Create a rendering job
       final jobResponse = await _dio.post(
         '${ApiConfig.baseUrl}${ApiConfig.jobs}/',
         data: {
-          'project_id': projectId,
+          'project_id': newProjectId,
           'job_type': 'render',
           'config': {
-            'file_id': fileId,
             'num_renders': numRenders,
             'resolution_x': resolutionX,
             'resolution_y': resolutionY,
-            'samples': samples,
+            'eevee_samples': samples,
             'randomize_camera': randomizeCamera,
             'randomize_lighting': randomizeLighting,
           },
@@ -467,7 +617,7 @@ class ApiService {
       print('✅ Step 2 complete: Rendering job created with ID: ${jobResult['id']}');
 
       return {
-        'file_id': fileId,
+        'project_id': newProjectId,
         'job_id': jobResult['id'],
         'job': jobResult,
       };

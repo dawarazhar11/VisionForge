@@ -92,9 +92,16 @@ services:
 
       # CORS
       CORS_ORIGINS: '["http://localhost:3000","http://localhost:8080","http://localhost:8002"]'
+
+      # Blender render scripts (repo blender/ dir, volume-mounted below)
+      BLENDER_SCRIPTS_DIR: "/app/blender_scripts"
+    entrypoint: ["/docker-entrypoint.sh"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
     volumes:
+      - ./backend/docker-entrypoint.sh:/docker-entrypoint.sh:ro
       - ./backend/storage:/app/storage
       - ./backend/logs:/app/logs
+      - ./blender:/app/blender_scripts:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -104,8 +111,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 10
+      start_period: 900s
     networks:
       - yolo_network
 
@@ -116,7 +123,8 @@ services:
       dockerfile: Dockerfile
     container_name: yolo_celery_worker
     restart: unless-stopped
-    command: celery -A app.celery_app.celery_app worker --loglevel=info --concurrency=2 -Q rendering,training,default,celery
+    entrypoint: ["/docker-entrypoint.sh"]
+    command: ["celery", "-A", "app.celery_app.celery_app", "worker", "--loglevel=info", "--concurrency=2", "-Q", "rendering,training,default,celery"]
     environment:
       # Database
       DATABASE_URL: "postgresql://yolo_user:yolo_dev_pass@postgres:5432/yolo_assembly"
@@ -130,9 +138,14 @@ services:
       UPLOAD_DIR: "storage/uploads"
       DATASET_DIR: "storage/datasets"
       MODEL_DIR: "storage/models"
+
+      # Blender render scripts (repo blender/ dir, volume-mounted below)
+      BLENDER_SCRIPTS_DIR: "/app/blender_scripts"
     volumes:
+      - ./backend/docker-entrypoint.sh:/docker-entrypoint.sh:ro
       - ./backend/storage:/app/storage
       - ./backend/logs:/app/logs
+      - ./blender:/app/blender_scripts:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -150,7 +163,8 @@ services:
       dockerfile: Dockerfile
     container_name: yolo_celery_beat
     restart: unless-stopped
-    command: celery -A app.celery_app.celery_app beat --loglevel=info
+    entrypoint: ["/docker-entrypoint.sh"]
+    command: ["celery", "-A", "app.celery_app.celery_app", "beat", "--loglevel=info"]
     environment:
       # Database
       DATABASE_URL: "postgresql://yolo_user:yolo_dev_pass@postgres:5432/yolo_assembly"
@@ -160,6 +174,7 @@ services:
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/1"
     volumes:
+      - ./backend/docker-entrypoint.sh:/docker-entrypoint.sh:ro
       - ./backend/logs:/app/logs
     depends_on:
       postgres:

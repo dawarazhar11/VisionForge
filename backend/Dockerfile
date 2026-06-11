@@ -26,6 +26,11 @@ RUN apt-get update && apt-get install -y \
     libxrandr2 \
     libxcursor1 \
     libx11-6 \
+    libegl1 \
+    libgles2 \
+    libopengl0 \
+    libgl1-mesa-dri \
+    libglx-mesa0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Blender:
@@ -58,11 +63,16 @@ COPY requirements.txt .
 # then attempt cadquery separately so the build doesn't fail on ARM64.
 RUN pip install --upgrade pip && \
     grep -v "^cadquery" requirements.txt > /tmp/requirements-core.txt && \
-    pip install -r /tmp/requirements-core.txt && \
-    pip install cadquery || echo "cadquery unavailable for this arch — STEP feature recognition disabled"
+    pip install --retries 10 --timeout 120 -r /tmp/requirements-core.txt && \
+    (pip install cadquery || echo "cadquery unavailable for this arch — STEP feature recognition disabled") && \
+    uvicorn --version && celery --version
 
 # Copy application code
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 COPY . .
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
 
 # Create necessary directories
 RUN mkdir -p storage/uploads storage/datasets storage/models logs
