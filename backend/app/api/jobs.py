@@ -277,6 +277,95 @@ def get_job(
     return job
 
 
+def _get_owned_job_previews_dir(
+    job_id: uuid.UUID, db: Session, current_user: User
+):
+    """Resolve the previews directory for a job the user owns, or raise."""
+    from pathlib import Path
+    from app.services.preview import PREVIEW_DIR_NAME
+
+    job = (
+        db.query(TrainingJob)
+        .options(joinedload(TrainingJob.project))
+        .filter(TrainingJob.id == job_id)
+        .first()
+    )
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    if job.project.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this job",
+        )
+
+    output_dir = (job.metrics_json or {}).get("output_dir")
+    if not output_dir:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job has no rendered output",
+        )
+
+    previews_dir = Path(output_dir) / PREVIEW_DIR_NAME
+    if not previews_dir.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No previews available for this job",
+        )
+
+    return previews_dir
+
+
+@router.get("/{job_id}/previews")
+def list_job_previews(
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    List annotated preview images for a render job.
+
+    Previews show the rendered images with their auto-generated YOLO
+    boxes drawn on, for visual verification of the dataset.
+    """
+    previews_dir = _get_owned_job_previews_dir(job_id, db, current_user)
+    names = sorted(p.name for p in previews_dir.glob("*.png"))
+    return {"job_id": str(job_id), "count": len(names), "previews": names}
+
+
+@router.get("/{job_id}/previews/{filename}")
+def get_job_preview(
+    job_id: uuid.UUID,
+    filename: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Download a single annotated preview image."""
+    from fastapi.responses import FileResponse
+    from pathlib import Path
+
+    # Reject anything that isn't a bare PNG filename (no path traversal)
+    if Path(filename).name != filename or not filename.endswith(".png"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid preview filename",
+        )
+
+    previews_dir = _get_owned_job_previews_dir(job_id, db, current_user)
+    path = previews_dir / filename
+    if not path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Preview not found",
+        )
+
+    return FileResponse(path=str(path), media_type="image/png", filename=filename)
+
+
 @router.get("/{job_id}/stream")
 async def stream_job_progress(
     job_id: uuid.UUID,

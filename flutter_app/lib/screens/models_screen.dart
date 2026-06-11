@@ -66,6 +66,12 @@ class _ModelsScreenState extends State<ModelsScreen> {
     return 'YOLO $size · $numClasses classes · $shortId';
   }
 
+  List<String> _modelClasses(Map<String, dynamic> model) {
+    final names = model['class_names'];
+    if (names is List) return names.map((e) => '$e').toList();
+    return const [];
+  }
+
   double _modelAccuracy(Map<String, dynamic> model) {
     final metrics = model['metrics'];
     if (metrics is Map) {
@@ -347,6 +353,23 @@ class _ModelsScreenState extends State<ModelsScreen> {
                                         children: [
                                           Text('mAP50: ${(accuracy * 100).toStringAsFixed(1)}%'),
                                           Text('Created: $createdAt', style: const TextStyle(fontSize: 12)),
+                                          if (_modelClasses(model).isNotEmpty) ...[
+                                            const SizedBox(height: 6),
+                                            Wrap(
+                                              spacing: 4,
+                                              runSpacing: 4,
+                                              children: _modelClasses(model)
+                                                  .map((c) => Chip(
+                                                        label: Text(c,
+                                                            style: const TextStyle(fontSize: 11)),
+                                                        materialTapTargetSize:
+                                                            MaterialTapTargetSize.shrinkWrap,
+                                                        visualDensity: VisualDensity.compact,
+                                                        padding: EdgeInsets.zero,
+                                                      ))
+                                                  .toList(),
+                                            ),
+                                          ],
                                         ],
                                       ),
                                       trailing: isDownloading

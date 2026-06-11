@@ -92,12 +92,16 @@ services:
 
       # CORS
       CORS_ORIGINS: '["http://localhost:3000","http://localhost:8080","http://localhost:8002"]'
+
+      # Blender render scripts (repo blender/ dir, volume-mounted below)
+      BLENDER_SCRIPTS_DIR: "/app/blender_scripts"
     entrypoint: ["/docker-entrypoint.sh"]
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
     volumes:
       - ./backend/docker-entrypoint.sh:/docker-entrypoint.sh:ro
       - ./backend/storage:/app/storage
       - ./backend/logs:/app/logs
+      - ./blender:/app/blender_scripts:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -134,10 +138,14 @@ services:
       UPLOAD_DIR: "storage/uploads"
       DATASET_DIR: "storage/datasets"
       MODEL_DIR: "storage/models"
+
+      # Blender render scripts (repo blender/ dir, volume-mounted below)
+      BLENDER_SCRIPTS_DIR: "/app/blender_scripts"
     volumes:
       - ./backend/docker-entrypoint.sh:/docker-entrypoint.sh:ro
       - ./backend/storage:/app/storage
       - ./backend/logs:/app/logs
+      - ./blender:/app/blender_scripts:ro
     depends_on:
       postgres:
         condition: service_healthy

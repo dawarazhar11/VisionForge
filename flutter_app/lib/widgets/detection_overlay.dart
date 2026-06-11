@@ -4,7 +4,7 @@ import 'dart:math' as math;
 
 /// Widget that renders detection bounding boxes on top of camera preview
 class DetectionOverlay extends StatelessWidget {
-  final List<Detection> detections;
+  final List<DetectionResult> detections;
   final Size previewSize;
   final bool showLabels;
   final bool showConfidence;
@@ -33,7 +33,7 @@ class DetectionOverlay extends StatelessWidget {
 
 /// Custom painter for drawing detection boxes
 class DetectionPainter extends CustomPainter {
-  final List<Detection> detections;
+  final List<DetectionResult> detections;
   final Size previewSize;
   final bool showLabels;
   final bool showConfidence;
@@ -52,7 +52,7 @@ class DetectionPainter extends CustomPainter {
     }
   }
 
-  void _drawDetection(Canvas canvas, Size size, Detection detection) {
+  void _drawDetection(Canvas canvas, Size size, DetectionResult detection) {
     // Convert normalized coordinates to screen coordinates
     final coords = detection.toAbsolute(
       size.width.toInt(),
@@ -177,7 +177,7 @@ class DetectionPainter extends CustomPainter {
     );
   }
 
-  String _buildLabel(Detection detection) {
+  String _buildLabel(DetectionResult detection) {
     final parts = <String>[];
 
     if (showLabels) {
@@ -206,7 +206,7 @@ class DetectionPainter extends CustomPainter {
 
 /// Detection statistics widget
 class DetectionStats extends StatelessWidget {
-  final List<Detection> detections;
+  final List<DetectionResult> detections;
   final double fps;
   final String? error;
 
