@@ -1,17 +1,16 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:file_picker/file_picker.dart';
+
 import '../models/project.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
-import 'training_job_create_screen.dart';
-import 'datasets_screen.dart';
-import 'blender_upload_screen.dart';
-import 'annotation_screen.dart';
+import '../theme/app_theme.dart';
 
+/// Project detail: pipeline (render/train jobs with live progress),
+/// annotated dataset previews, resolved class list, and launchers.
 class ProjectDetailScreen extends StatefulWidget {
   final Project project;
-
   const ProjectDetailScreen({super.key, required this.project});
 
   @override
@@ -19,317 +18,289 @@ class ProjectDetailScreen extends StatefulWidget {
 }
 
 class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
-  int _selectedIndex = 0;
-  bool _isUploading = false;
-  double _uploadProgress = 0.0;
+  final _api = ApiService();
+  String? _token;
+
+  List<Map<String, dynamic>> _jobs = [];
+  List<String> _classNames = [];
+  List<String> _previews = [];
+  String? _previewJobId;
+  bool _loading = true;
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    _token = Provider.of<AuthProvider>(context, listen: false).accessToken;
+    _refresh();
+    _poll = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_jobs.any((j) => _isActive(j['status']))) _refresh(silent: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  bool _isActive(dynamic status) =>
+      status == 'PENDING' || status == 'RUNNING' || status == 'STARTED';
+
+  Future<void> _refresh({bool silent = false}) async {
+    if (_token == null) return;
+    if (!silent) setState(() => _loading = true);
+    try {
+      final jobs = await _api.getTrainingJobs(_token!, widget.project.id);
+      final jobList = jobs
+          .map((j) => Map<String, dynamic>.from(j as Map))
+          .toList()
+        ..sort((a, b) => (b['created_at'] ?? '')
+            .toString()
+            .compareTo((a['created_at'] ?? '').toString()));
+
+      Map<String, dynamic>? latestRender;
+      for (final j in jobList) {
+        if (j['stage'] == 'render' && j['status'] == 'SUCCESS') {
+          latestRender = j;
+          break;
+        }
+      }
+      var previews = _previews;
+      var previewJob = _previewJobId;
+      var classes = _classNames;
+      if (latestRender != null && latestRender['id'] != _previewJobId) {
+        previewJob = latestRender['id'] as String;
+        previews = await _api.getJobPreviews(_token!, previewJob);
+        final m = latestRender['metrics_json'];
+        if (m is Map && m['class_names'] is List) {
+          classes = (m['class_names'] as List).map((e) => '$e').toList();
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _jobs = jobList;
+        _previews = previews;
+        _previewJobId = previewJob;
+        _classNames = classes;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _startJob(String type) async {
+    if (_token == null) return;
+    try {
+      await _api.createJob(
+        projectId: widget.project.id,
+        jobType: type,
+        config: type == 'render'
+            ? {
+                'num_renders': 40,
+                'resolution_x': 640,
+                'resolution_y': 640,
+                'eevee_samples': 24
+              }
+            : {'epochs': 30, 'imgsz': 320, 'device': 'cpu'},
+      );
+      _refresh(silent: true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+                '${type == 'render' ? 'Render' : 'Training'} started')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Failed: $e')));
+      }
+    }
+  }
+
+  bool get _hasSuccessfulRender =>
+      _jobs.any((j) => j['stage'] == 'render' && j['status'] == 'SUCCESS');
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.project.name),
-      ),
-      body: _selectedIndex == 0
-          ? _buildOverviewTab()
-          : _selectedIndex == 1
-              ? _buildDatasetsTab()
-              : _buildTrainingTab(),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: (index) => setState(() => _selectedIndex = index),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.info_outline),
-            label: 'Overview',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dataset),
-            label: 'Datasets',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.model_training),
-            label: 'Training',
-          ),
+        actions: [
+          IconButton(
+              icon: const Icon(Icons.refresh), onPressed: () => _refresh()),
         ],
       ),
-    );
-  }
-
-  Widget _buildOverviewTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _refresh,
+              child: ListView(
+                padding: const EdgeInsets.all(AppTheme.s4),
                 children: [
-                  Text(
-                    'Project Information',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildInfoRow('Name', widget.project.name),
-                  _buildInfoRow('Description', widget.project.description ?? 'No description'),
-                  _buildInfoRow('Created', widget.project.createdAt?.toString() ?? 'Unknown'),
-                  _buildInfoRow('ID', widget.project.id),
+                  _actions(),
+                  const SizedBox(height: AppTheme.s5),
+                  if (_classNames.isNotEmpty) ...[
+                    _sectionTitle('Detected classes'),
+                    _classChips(),
+                    const SizedBox(height: AppTheme.s5),
+                  ],
+                  if (_previews.isNotEmpty) ...[
+                    _sectionTitle('Dataset preview'),
+                    _previewGrid(),
+                    const SizedBox(height: AppTheme.s5),
+                  ],
+                  _sectionTitle('Pipeline'),
+                  if (_jobs.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: AppTheme.s4),
+                      child: Text(
+                          'No jobs yet. Start a render to generate data.'),
+                    )
+                  else
+                    ..._jobs.map(_jobCard),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Quick Actions',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 16),
-                  ListTile(
-                    leading: const Icon(Icons.upload_file, color: Colors.blue),
-                    title: const Text('Upload Dataset'),
-                    subtitle: const Text('Add training images'),
-                    trailing: _isUploading
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.chevron_right),
-                    onTap: _isUploading ? null : _uploadDataset,
-                  ),
-                  const Divider(),
-                  ListTile(
-                    leading: const Icon(Icons.play_arrow, color: Colors.green),
-                    title: const Text('Start Training'),
-                    subtitle: const Text('Train a new model'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => TrainingJobCreateScreen(project: widget.project),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(
-              '$label:',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
+  Widget _actions() {
+    return Row(
+      children: [
+        Expanded(
+          child: FilledButton.icon(
+            onPressed: () => _startJob('render'),
+            icon: const Icon(Icons.movie_filter),
+            label: const Text('Render'),
           ),
-          Expanded(
-            child: Text(value),
+        ),
+        const SizedBox(width: AppTheme.s3),
+        Expanded(
+          child: FilledButton.tonalIcon(
+            onPressed: _hasSuccessfulRender ? () => _startJob('train') : null,
+            icon: const Icon(Icons.model_training),
+            label: const Text('Train'),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Future<void> _uploadDataset() async {
-    try {
-      // Pick images
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['jpg', 'jpeg', 'png'],
-        allowMultiple: true,
-        dialogTitle: 'Select Images',
+  Widget _sectionTitle(String t) => Padding(
+        padding: const EdgeInsets.only(bottom: AppTheme.s2),
+        child: Text(t, style: Theme.of(context).textTheme.titleMedium),
       );
 
-      if (result == null || result.files.isEmpty) return;
+  Widget _classChips() => Wrap(
+        spacing: AppTheme.s2,
+        runSpacing: AppTheme.s2,
+        children: _classNames
+            .map((c) => Chip(
+                label: Text(c), visualDensity: VisualDensity.compact))
+            .toList(),
+      );
 
-      final imagePaths = result.files.map((f) => f.path!).toList();
+  Widget _previewGrid() {
+    final headers = {'Authorization': 'Bearer $_token'};
+    return SizedBox(
+      height: 110,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _previews.length,
+        separatorBuilder: (_, __) => const SizedBox(width: AppTheme.s2),
+        itemBuilder: (_, i) {
+          final url = _api.jobPreviewUrl(_previewJobId!, _previews[i]);
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(AppTheme.s2),
+            child: Image.network(
+              url,
+              headers: headers,
+              width: 150,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                width: 150,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: const Icon(Icons.broken_image),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 
-      // Ask if user wants to select annotation files
-      final hasAnnotations = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Annotations'),
-          content: const Text('Do you have annotation files (.txt) for these images?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('No, Upload Images Only'),
+  Widget _jobCard(Map<String, dynamic> j) {
+    final stage = (j['stage'] ?? 'job').toString();
+    final status = (j['status'] ?? '').toString();
+    final progress =
+        (j['progress'] is num) ? (j['progress'] as num).toInt() : 0;
+    final active = _isActive(status);
+
+    Color statusColor;
+    switch (status) {
+      case 'SUCCESS':
+        statusColor = Colors.green;
+        break;
+      case 'FAILED':
+        statusColor = Theme.of(context).colorScheme.error;
+        break;
+      default:
+        statusColor = Theme.of(context).colorScheme.primary;
+    }
+
+    final metrics = j['metrics_json'];
+    final hasError = status == 'FAILED' &&
+        metrics is Map &&
+        metrics['error'] != null;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: AppTheme.s3),
+      child: Padding(
+        padding: const EdgeInsets.all(AppTheme.s4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                    stage == 'render'
+                        ? Icons.movie_filter
+                        : Icons.model_training,
+                    size: 20),
+                const SizedBox(width: AppTheme.s2),
+                Text(stage.isEmpty
+                    ? 'Job'
+                    : stage[0].toUpperCase() + stage.substring(1),
+                    style: Theme.of(context).textTheme.titleSmall),
+                const Spacer(),
+                Text(status,
+                    style: TextStyle(
+                        color: statusColor, fontWeight: FontWeight.w600)),
+              ],
             ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Yes, Select Annotations'),
-            ),
+            if (active) ...[
+              const SizedBox(height: AppTheme.s3),
+              LinearProgressIndicator(
+                  value: progress > 0 ? progress / 100 : null),
+              const SizedBox(height: AppTheme.s1),
+              Text('$progress%',
+                  style: Theme.of(context).textTheme.bodySmall),
+            ],
+            if (hasError) ...[
+              const SizedBox(height: AppTheme.s2),
+              Text(
+                (metrics)['error'].toString(),
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.error, fontSize: 12),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ],
         ),
-      );
-
-      List<String> annotationPaths = [];
-      if (hasAnnotations == true) {
-        final annotResult = await FilePicker.platform.pickFiles(
-          type: FileType.custom,
-          allowedExtensions: ['txt'],
-          allowMultiple: true,
-          dialogTitle: 'Select Annotation Files',
-        );
-        if (annotResult != null) {
-          annotationPaths = annotResult.files.map((f) => f.path!).toList();
-        }
-      }
-
-      setState(() {
-        _isUploading = true;
-        _uploadProgress = 0.0;
-      });
-
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final token = authProvider.accessToken!;
-      final apiService = ApiService();
-
-      await apiService.uploadDataset(
-        token,
-        widget.project.id,
-        imagePaths,
-        annotationPaths,
-        onProgress: (uploaded, total) {
-          setState(() {
-            _uploadProgress = uploaded / total;
-          });
-        },
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Successfully uploaded ${imagePaths.length} images!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Upload failed: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isUploading = false;
-          _uploadProgress = 0.0;
-        });
-      }
-    }
-  }
-
-  Widget _buildDatasetsTab() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          if (_isUploading) ...[
-            const Icon(Icons.cloud_upload, size: 64, color: Colors.blue),
-            const SizedBox(height: 16),
-            Text('Uploading... ${(_uploadProgress * 100).toInt()}%'),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: LinearProgressIndicator(value: _uploadProgress),
-            ),
-          ] else ...[
-            const Icon(Icons.dataset, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            const Text('Manage Your Datasets'),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => DatasetsScreen(project: widget.project),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.folder),
-              label: const Text('View Datasets'),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _uploadDataset,
-              icon: const Icon(Icons.upload),
-              label: const Text('Upload New Dataset'),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => BlenderUploadScreen(project: widget.project),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.view_in_ar),
-              label: const Text('Generate Synthetic Data'),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => AnnotationScreen(project: widget.project),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.draw),
-              label: const Text('Capture & Annotate'),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTrainingTab() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.model_training, size: 64, color: Colors.grey),
-          const SizedBox(height: 16),
-          const Text('No training jobs yet'),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => TrainingJobCreateScreen(project: widget.project),
-                ),
-              );
-            },
-            icon: const Icon(Icons.play_arrow),
-            label: const Text('Start Training'),
-          ),
-        ],
       ),
     );
   }
