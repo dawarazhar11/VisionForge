@@ -10,10 +10,10 @@ class DetectionScreen extends StatefulWidget {
   const DetectionScreen({super.key});
 
   @override
-  State<DetectionScreen> createState() => _DetectionScreenState();
+  State<DetectionScreen> createState() => DetectionScreenState();
 }
 
-class _DetectionScreenState extends State<DetectionScreen> {
+class DetectionScreenState extends State<DetectionScreen> {
   CameraController? _cameraController;
   List<CameraDescription>? _cameras;
   bool _isInitialized = false;
@@ -34,6 +34,28 @@ class _DetectionScreenState extends State<DetectionScreen> {
   void initState() {
     super.initState();
     _initializeCamera();
+  }
+
+  /// Re-check the active model and (re)initialize. Called when the Detect
+  /// tab becomes visible — the nav shell keeps this screen alive, so a model
+  /// activated after first launch wouldn't otherwise be picked up.
+  Future<void> reloadActiveModel() async {
+    final prefs = await SharedPreferences.getInstance();
+    final path = prefs.getString('active_model_path');
+    // Already running with the current model — nothing to do.
+    if (_isInitialized && path == _activeModelPath) return;
+
+    await _cameraController?.dispose();
+    _cameraController = null;
+    _yoloService?.dispose();
+    _yoloService = null;
+    if (mounted) {
+      setState(() {
+        _isInitialized = false;
+        _error = null;
+      });
+    }
+    await _initializeCamera();
   }
 
   Future<void> _initializeCamera() async {
@@ -162,12 +184,17 @@ class _DetectionScreenState extends State<DetectionScreen> {
               style: const TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).pushReplacementNamed('/models');
-              },
-              icon: const Icon(Icons.download),
-              label: const Text('Go to Models'),
+            FilledButton.icon(
+              onPressed: reloadActiveModel,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Download a model in the Models tab and tap "Set Active", '
+              'then return here.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: Colors.grey),
             ),
           ],
         ),

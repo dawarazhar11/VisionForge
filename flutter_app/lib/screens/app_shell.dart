@@ -16,6 +16,7 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _index = 0;
+  final _detectKey = GlobalKey<DetectionScreenState>();
 
   static const _destinations = [
     NavigationDestination(
@@ -45,17 +46,22 @@ class _AppShellState extends State<AppShell> {
     return Scaffold(
       body: IndexedStack(
         index: _index,
-        children: const [
-          ProjectsScreen(),
-          DetectionScreen(),
-          ModelsScreen(),
-          SettingsScreen(),
+        children: [
+          const ProjectsScreen(),
+          DetectionScreen(key: _detectKey),
+          const ModelsScreen(),
+          const SettingsScreen(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         destinations: _destinations,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: (i) {
+          setState(() => _index = i);
+          // Detect tab kept alive by IndexedStack — refresh active model
+          // so a model activated since launch is picked up.
+          if (i == 1) _detectKey.currentState?.reloadActiveModel();
+        },
       ),
     );
   }
