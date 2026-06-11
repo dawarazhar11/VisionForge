@@ -74,9 +74,14 @@ class DetectionScreenState extends State<DetectionScreen> {
       final prefs = await SharedPreferences.getInstance();
       _activeModelPath = prefs.getString('active_model_path');
 
-      if (_activeModelPath == null || !File(_activeModelPath!).existsSync()) {
+      final exists =
+          _activeModelPath != null && File(_activeModelPath!).existsSync();
+      if (!exists) {
         setState(() {
-          _error = 'No active model selected. Please download and activate a model first.';
+          _error = 'No active model.\n'
+              'path: ${_activeModelPath ?? "(none set)"}\n'
+              'file exists: ${_activeModelPath == null ? "n/a" : "no"}\n'
+              'Download a model and tap "Set Active", then Retry.';
         });
         return;
       }
