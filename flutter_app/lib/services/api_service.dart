@@ -174,6 +174,128 @@ class ApiService {
     }
   }
 
+  /// Full class map for a project: {object_to_class, class_names, source}.
+  /// Returns null when no explicit class map is set (404).
+  Future<Map<String, dynamic>?> getProjectClassMap(
+      String token, String projectId) async {
+    final response = await _client.get(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId/class-map'),
+      headers: _authJson(token),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else if (response.statusCode == 404) {
+      return null;
+    }
+    throw Exception('Failed to load class map (${response.statusCode})');
+  }
+
+  /// Set/override a project's class map via PATCH /projects/{id}.
+  /// [classMap] is either {object: index} or
+  /// {object_to_class:{...}, class_names:[...]}.
+  Future<void> setProjectClassMap(
+      String token, String projectId, Map<String, dynamic> classMap) async {
+    final response = await _client.patch(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId'),
+      headers: _authJson(token),
+      body: jsonEncode({'class_map': classMap}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to set class map (${response.statusCode})');
+    }
+  }
+
+  /// Recognized manufacturing features for a STEP project.
+  /// Returns {project_id, features:[...], total, class_names:[...]}.
+  Future<Map<String, dynamic>?> getProjectFeatures(
+      String token, String projectId) async {
+    final response = await _client.get(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.projects}/$projectId/features'),
+      headers: _authJson(token),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else if (response.statusCode == 404) {
+      return null;
+    }
+    throw Exception('Failed to load features (${response.statusCode})');
+  }
+
+  /// Upload any supported design file (.step/.stp/.blend/.obj/.stl/.fbx).
+  /// Creates a project from (name, file) and returns the project map.
+  Future<Map<String, dynamic>> uploadProjectFile({
+    required String token,
+    required String name,
+    required String filePath,
+    Function(int sent, int total)? onProgress,
+  }) async {
+    final fileName = filePath.split(Platform.pathSeparator).last;
+    final formData = FormData.fromMap({
+      'name': name,
+      'file': await MultipartFile.fromFile(filePath, filename: fileName),
+    });
+    final resp = await _dio.post(
+      '${ApiConfig.baseUrl}${ApiConfig.projects}/upload',
+      data: formData,
+      options: Options(headers: {'Authorization': 'Bearer $token'}),
+      onSendProgress: (s, t) => onProgress?.call(s, t),
+    );
+    if (resp.statusCode != 201 && resp.statusCode != 200) {
+      throw Exception('Upload failed (${resp.statusCode})');
+    }
+    return Map<String, dynamic>.from(resp.data as Map);
+  }
+
+  /// List annotated preview filenames for a render job.
+  Future<List<String>> getJobPreviews(String token, String jobId) async {
+    final response = await _client.get(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.jobs}/$jobId/previews'),
+      headers: _authJson(token),
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final list = data['previews'];
+      return list is List ? list.map((e) => e.toString()).toList() : [];
+    } else if (response.statusCode == 404) {
+      return [];
+    }
+    throw Exception('Failed to list previews (${response.statusCode})');
+  }
+
+  /// Full URL for a single annotated preview image (needs auth header).
+  String jobPreviewUrl(String jobId, String filename) =>
+      '${ApiConfig.baseUrl}${ApiConfig.jobs}/$jobId/previews/$filename';
+
+  /// Class names for a trained model (JSON).
+  Future<List<String>> getModelClassNames(String token, String modelId) async {
+    final response = await _client.get(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.models}/$modelId/class-names'),
+      headers: _authJson(token),
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final list = data['class_names'];
+      return list is List ? list.map((e) => e.toString()).toList() : [];
+    }
+    return [];
+  }
+
+  /// Cancel a job.
+  Future<void> cancelJob(String token, String jobId) async {
+    final response = await _client.delete(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.jobs}/$jobId'),
+      headers: _authJson(token),
+    );
+    if (response.statusCode != 204 && response.statusCode != 200) {
+      throw Exception('Failed to cancel job (${response.statusCode})');
+    }
+  }
+
+  Map<String, String> _authJson(String token) => {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      };
+
   /// Create new project
   Future<Map<String, dynamic>> createProject(
     String token,
