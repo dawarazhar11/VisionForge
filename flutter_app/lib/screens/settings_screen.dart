@@ -182,6 +182,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       );
                     },
                   ),
+                  ListTile(
+                    leading: Icon(Icons.logout,
+                        color: Theme.of(context).colorScheme.error),
+                    title: Text('Log Out',
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.error)),
+                    onTap: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Log Out'),
+                          content: const Text('Sign out of this account?'),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Cancel')),
+                            FilledButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text('Log Out')),
+                          ],
+                        ),
+                      );
+                      if (confirm == true) {
+                        await authProvider.logout();
+                      }
+                    },
+                  ),
                 ],
               ),
             ),
