@@ -39,9 +39,23 @@ class DetectionScreenState extends State<DetectionScreen> {
   /// Re-check the active model and (re)initialize. Called when the Detect
   /// tab becomes visible — the nav shell keeps this screen alive, so a model
   /// activated after first launch wouldn't otherwise be picked up.
-  Future<void> reloadActiveModel() async {
+  /// Resolve the active model's file path from the CURRENT app container.
+  /// We store the model ID (stable) and rebuild the path each time — an
+  /// absolute path saved in prefs breaks after reinstall because iOS changes
+  /// the container UUID.
+  Future<String?> _resolveActiveModelPath() async {
     final prefs = await SharedPreferences.getInstance();
-    final path = prefs.getString('active_model_path');
+    final id = prefs.getString('active_model_id');
+    if (id != null) {
+      final dir = await getApplicationDocumentsDirectory();
+      return '${dir.path}/models/$id/model.tflite';
+    }
+    // Legacy fallback: absolute path stored by older builds.
+    return prefs.getString('active_model_path');
+  }
+
+  Future<void> reloadActiveModel() async {
+    final path = await _resolveActiveModelPath();
     // Already running with the current model — nothing to do.
     if (_isInitialized && path == _activeModelPath) return;
 
@@ -70,18 +84,16 @@ class DetectionScreenState extends State<DetectionScreen> {
         return;
       }
 
-      // Load active model path
-      final prefs = await SharedPreferences.getInstance();
-      _activeModelPath = prefs.getString('active_model_path');
+      // Resolve active model from the current container (reinstall-safe).
+      _activeModelPath = await _resolveActiveModelPath();
 
       final exists =
           _activeModelPath != null && File(_activeModelPath!).existsSync();
       if (!exists) {
         setState(() {
-          _error = 'No active model.\n'
-              'path: ${_activeModelPath ?? "(none set)"}\n'
-              'file exists: ${_activeModelPath == null ? "n/a" : "no"}\n'
-              'Download a model and tap "Set Active", then Retry.';
+          _error = 'No active model available.\n'
+              'In the Models tab: Download the model, then tap "Set Active".\n'
+              'A re-download is needed after reinstalling the app.';
         });
         return;
       }
