@@ -17,6 +17,8 @@ Upload a CAD assembly or Blender scene → VisionForge auto-generates labeled sy
 
 </div>
 
+![VisionForge pipeline](docs/images/hero-pipeline.svg)
+
 ---
 
 ## The Problem
@@ -73,18 +75,11 @@ Because the geometry is known, the labels are free: Blender renders the part fro
 
 ## See It In Action
 
-VisionForge generates **perfectly labeled training images automatically** — no human draws a single box. Below are real preview frames straight from a render job, with the auto-generated YOLO labels drawn on. The class names come directly from the source design file.
+The core idea: **the part names in your design file become the detection classes**, and the training images are labeled automatically — no human draws a single box.
 
-<div align="center">
+![How auto-labeling works](docs/images/auto-label-concept.svg)
 
-| STEP assembly → per-part labels | Blender scene → per-object labels |
-|:---:|:---:|
-| ![Auto-labeled STEP assembly](docs/images/auto-labeled-step-parts.png) | ![Auto-labeled Blender scene](docs/images/auto-labeled-blend.png) |
-| Component names (`base_plate`, `rotor`, `bolt_m4`) become detection classes | Each named mesh object becomes a class |
-
-</div>
-
-> Every render job produces a folder of these previews so you can verify the dataset before training — the labels you see here are exactly what the model learns from.
+Every render job also produces a folder of preview images with the boxes drawn on, so you can verify the dataset before training — what you see is exactly what the model learns from.
 
 ## Quick Start
 
