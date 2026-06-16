@@ -1,0 +1,71 @@
+<svg width="100%" viewBox="0 0 1200 440" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B1220"/>
+      <stop offset="1" stop-color="#111A2E"/>
+    </linearGradient>
+    <linearGradient id="ac2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#00C2FF"/>
+    </linearGradient>
+    <marker id="ar2" markerWidth="12" markerHeight="12" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#00C2FF"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="440" rx="20" fill="url(#bg2)"/>
+
+  <text x="40" y="54" fill="#FFFFFF" font-size="24" font-weight="700">Labels come from your design file</text>
+  <text x="40" y="80" fill="#8FA3C4" font-size="15">The part names in your CAD/3D model become the detection classes — automatically, with no human labeling.</text>
+  <rect x="40" y="92" width="110" height="4" rx="2" fill="url(#ac2)"/>
+
+  <!-- LEFT: design file with named parts -->
+  <text x="120" y="138" text-anchor="middle" fill="#7E92B4" font-size="13" font-weight="600">DESIGN FILE</text>
+  <rect x="40" y="150" width="300" height="230" rx="14" fill="#0E1A30" stroke="#24324F"/>
+  <!-- exploded assembly: 3 simple parts -->
+  <ellipse cx="120" cy="248" rx="78" ry="26" fill="#16213A" stroke="#2A3A5C"/>
+  <rect x="84" y="196" width="72" height="44" rx="6" fill="#1E2F4D" stroke="#3B5180"/>
+  <circle cx="240" cy="214" r="26" fill="#1E2F4D" stroke="#3B5180"/>
+  <rect x="214" y="288" width="52" height="34" rx="5" fill="#1E2F4D" stroke="#3B5180"/>
+  <!-- tiny name tags in the file -->
+  <text x="120" y="222" text-anchor="middle" fill="#9DB4DA" font-size="11" font-family="monospace">base_plate</text>
+  <text x="240" y="217" text-anchor="middle" fill="#9DB4DA" font-size="10" font-family="monospace">rotor</text>
+  <text x="240" y="308" text-anchor="middle" fill="#9DB4DA" font-size="10" font-family="monospace">bolt_m4</text>
+
+  <!-- ARROW + caption -->
+  <path d="M360 265 L470 265" stroke="url(#ac2)" stroke-width="4" fill="none" marker-end="url(#ar2)"/>
+  <text x="415" y="250" text-anchor="middle" fill="#00C2FF" font-size="12" font-weight="600">render +</text>
+  <text x="415" y="288" text-anchor="middle" fill="#00C2FF" font-size="12" font-weight="600">auto-box</text>
+
+  <!-- RIGHT: rendered frame with labeled detection boxes -->
+  <text x="690" y="138" text-anchor="middle" fill="#7E92B4" font-size="13" font-weight="600">AUTO-LABELED TRAINING IMAGE</text>
+  <rect x="500" y="150" width="380" height="230" rx="14" fill="#0E1A30" stroke="#24324F"/>
+  <!-- scene -->
+  <ellipse cx="690" cy="300" rx="150" ry="34" fill="#16213A"/>
+  <rect x="560" y="250" width="90" height="56" rx="6" fill="#243a5e"/>
+  <circle cx="740" cy="232" r="34" fill="#2b446e"/>
+  <rect x="690" y="300" width="56" height="36" rx="5" fill="#243a5e"/>
+  <!-- detection boxes with class tags -->
+  <rect x="552" y="240" width="106" height="74" rx="3" fill="none" stroke="#FF5C5C" stroke-width="3"/>
+  <rect x="552" y="226" width="86" height="16" rx="2" fill="#FF5C5C"/>
+  <text x="558" y="238" fill="#0B1220" font-size="11" font-weight="700" font-family="monospace">base_plate</text>
+
+  <rect x="704" y="198" width="74" height="70" rx="3" fill="none" stroke="#48F90A" stroke-width="3"/>
+  <rect x="704" y="184" width="44" height="16" rx="2" fill="#48F90A"/>
+  <text x="710" y="196" fill="#0B1220" font-size="11" font-weight="700" font-family="monospace">rotor</text>
+
+  <rect x="684" y="294" width="68" height="48" rx="3" fill="none" stroke="#00C2FF" stroke-width="3"/>
+  <rect x="684" y="280" width="58" height="16" rx="2" fill="#00C2FF"/>
+  <text x="690" y="292" fill="#0B1220" font-size="11" font-weight="700" font-family="monospace">bolt_m4</text>
+
+  <!-- footer note -->
+  <rect x="920" y="150" width="240" height="230" rx="14" fill="#16213A" stroke="#24324F"/>
+  <text x="940" y="186" fill="#FFFFFF" font-size="14" font-weight="700">Why it matters</text>
+  <text x="940" y="214" fill="#9DB4DA" font-size="12.5">No drawing boxes by</text>
+  <text x="940" y="233" fill="#9DB4DA" font-size="12.5">hand. No dataset to</text>
+  <text x="940" y="252" fill="#9DB4DA" font-size="12.5">buy or scrape.</text>
+  <text x="940" y="286" fill="#9DB4DA" font-size="12.5">Thousands of perfectly</text>
+  <text x="940" y="305" fill="#9DB4DA" font-size="12.5">labeled frames from</text>
+  <text x="940" y="324" fill="#9DB4DA" font-size="12.5">one file — in minutes.</text>
+  <rect x="940" y="344" width="200" height="2" rx="1" fill="url(#ac2)"/>
+</svg>
