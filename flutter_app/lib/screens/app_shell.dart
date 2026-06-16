@@ -57,10 +57,16 @@ class _AppShellState extends State<AppShell> {
         selectedIndex: _index,
         destinations: _destinations,
         onDestinationSelected: (i) {
+          final leavingDetect = _index == 1 && i != 1;
           setState(() => _index = i);
-          // Detect tab kept alive by IndexedStack — refresh active model
-          // so a model activated since launch is picked up.
-          if (i == 1) _detectKey.currentState?.reloadActiveModel();
+          // IndexedStack keeps Detect alive; pause its camera + inference when
+          // it's not visible (otherwise it blocks the UI thread app-wide), and
+          // resume / refresh the active model when returning to it.
+          if (i == 1) {
+            _detectKey.currentState?.resumeDetection();
+          } else if (leavingDetect) {
+            _detectKey.currentState?.pauseDetection();
+          }
         },
       ),
     );

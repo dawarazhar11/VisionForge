@@ -39,12 +39,25 @@ class _NewProjectScreenState extends State<NewProjectScreen> {
   }
 
   Future<void> _pickFile() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: _supported,
-    );
+    // iOS greys out unknown extensions (.step/.stp) under FileType.custom,
+    // so accept any file and validate the extension ourselves.
+    final result = await FilePicker.platform.pickFiles(type: FileType.any);
     if (result == null || result.files.single.path == null) return;
     final f = result.files.single;
+    final ext = f.name.contains('.')
+        ? f.name.split('.').last.toLowerCase()
+        : '';
+    if (!_supported.contains(ext)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Unsupported file ".$ext". Choose a STEP/STP/BLEND/OBJ/STL/FBX file.'),
+          ),
+        );
+      }
+      return;
+    }
     setState(() {
       _filePath = f.path;
       _fileName = f.name;
