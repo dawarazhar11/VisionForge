@@ -2,16 +2,18 @@
 
 # VisionForge
 
-**End-to-end synthetic data generation, YOLO model training, and mobile deployment platform for real-time object detection.**
+**Turn any 3D design file into a deployable, real-time object-detection model — no manual labeling.**
+
+Upload a CAD assembly or Blender scene → VisionForge auto-generates labeled synthetic training images → trains a YOLO model → exports it to mobile → detects on-device.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776AB.svg?logo=python&logoColor=white)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.123+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB.svg?logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.123-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Flutter](https://img.shields.io/badge/Flutter-3.16+-02569B.svg?logo=flutter&logoColor=white)](https://flutter.dev)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.9+-EE4C2C.svg?logo=pytorch&logoColor=white)](https://pytorch.org)
+[![Ultralytics YOLO](https://img.shields.io/badge/YOLO-Ultralytics-purple.svg)](https://docs.ultralytics.com)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)](docker-compose.yml)
 
-[Getting Started](#getting-started) · [Architecture](#architecture) · [Documentation](#documentation) · [Contributing](#contributing)
+[Quick Start](#quick-start) · [How It Works](#how-it-works) · [Architecture](#architecture) · [Setup](docs/SETUP.md) · [Documentation](#documentation)
 
 </div>
 
@@ -19,265 +21,141 @@
 
 ## Overview
 
-AssemblyVision AI automates the entire computer vision pipeline -- from generating synthetic training data using Blender 3D renders, to training custom YOLO object detection models, to deploying them on mobile devices for real-time inference.
+Training an object detector normally means collecting and hand-labeling thousands of photos. VisionForge removes that step entirely: it renders **automatically labeled** training images from a 3D model you already have, trains a detector on them, and packages the result for on-device inference.
 
-Upload a 3D assembly file, generate hundreds of labeled training images automatically, train a detection model, and deploy it to iOS or Android -- all through a unified API and mobile app.
+The key idea is that **labels come from the design file itself.** The names of the parts in your CAD assembly or Blender scene become the detection classes — nothing is hardcoded. Name a part `gear_housing` and the model learns to detect `gear_housing`.
 
-### Key Capabilities
+### Capabilities
 
-- **Synthetic Data Generation** -- Render labeled training images from 3D models using Blender with randomized camera angles, lighting, and object visibility
-- **Automated YOLO Training** -- Train YOLOv8/v11 segmentation models on generated datasets with GPU acceleration
-- **Multi-Platform Export** -- Convert trained models to CoreML (iOS), TFLite (Android), and ONNX (desktop/edge)
-- **Real-Time Mobile Inference** -- Run object detection at 30+ FPS on-device via Flutter cross-platform app
-- **RESTful API** -- Full project management, job tracking, and model serving through FastAPI
-- **Async Processing** -- Background rendering and training jobs via Celery + Redis task queue
+- **Any design file in** — `.step` / `.stp`, `.blend`, `.obj`, `.stl`, `.fbx`
+- **Automatic labeling** — Blender renders images from randomized camera angles and lighting, emitting YOLO bounding boxes with zero manual annotation
+- **Dynamic classes** — detection labels are derived from the model: CAD component names (Fusion 360 / SolidWorks / Inventor), Blender object names, or recognized STEP features (holes, bosses, chamfers). Overridable per project.
+- **Annotated previews** — every render job produces preview images with boxes drawn on, so you can verify the dataset
+- **YOLO training** — Ultralytics YOLO11 with automatic CUDA → MPS → CPU device selection
+- **Mobile export** — TFLite (Android) and CoreML (iOS), served with a matching `labels.txt`
+- **On-device inference** — a Flutter app runs the trained model live through the camera
+- **Async by design** — FastAPI + Celery + Redis process render and training jobs in the background with live progress (polling or SSE)
 
 ## How It Works
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  Upload 3D  │────>│  Generate   │────>│  Train YOLO │────>│   Deploy    │
-│  Assembly   │     │  Synthetic  │     │    Model    │     │  to Mobile  │
-│   (.blend)  │     │   Dataset   │     │  (GPU/CPU)  │     │  (iOS/And)  │
-└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
-                     Blender EEVEE       Ultralytics         CoreML/TFLite
-                     150+ images         YOLOv8/v11          30+ FPS
-                     YOLO labels         mAP tracking        On-device
+┌──────────────┐    ┌───────────────┐    ┌──────────────┐    ┌──────────────┐    ┌─────────────┐
+│  Upload      │──> │  Auto-render  │──> │  Train YOLO  │──> │  Export      │──> │  Detect     │
+│  design file │    │  + auto-label │    │  model       │    │  TFLite/     │    │  on-device  │
+│  (STEP/.blend)│   │  (Blender)    │    │ (Ultralytics)│    │  CoreML      │    │  (Flutter)  │
+└──────────────┘    └───────────────┘    └──────────────┘    └──────────────┘    └─────────────┘
+        classes resolved from the design file ───────────────────────────> served as labels.txt
 ```
 
-**Workflow:**
+1. **Upload** a 3D file through the app or API.
+2. **Render** — Blender (headless EEVEE) generates synthetic images with randomized camera/lighting and writes YOLO labels. Classes are resolved from the file (CAD part names, STEP features, or mesh names); annotated previews are generated for review.
+3. **Train** — a YOLO model trains on the dataset, carrying those class names end-to-end.
+4. **Export** — the trained model is converted to TFLite/CoreML and bundled with its labels.
+5. **Deploy** — download the model into the Flutter app, set it active, and detect through the camera.
 
-1. **Upload** a Blender `.blend` file (or `.obj`, `.stl`, `.fbx`) via API or mobile app
-2. **Render** synthetic training data -- Blender generates images with randomized camera angles, lighting conditions, and YOLO-format bounding box labels
-3. **Train** a YOLO model on the generated dataset with configurable epochs, image size, and model architecture
-4. **Export** the trained model to CoreML (iOS), TFLite (Android), or ONNX
-5. **Deploy** to your mobile device and run real-time object detection through the camera
+## Quick Start
 
-## Detection Classes
+### Docker (recommended — Linux / Windows x86_64)
 
-The system detects 7 mechanical component classes in assembly scenes:
-
-| Class ID | Name | Description |
-|----------|------|-------------|
-| 0 | `small_screw` | Standard small screws (11 instances) |
-| 1 | `small_hole` | Screw position indicators / bracket holes |
-| 2 | `large_screw` | Larger structural screws (left & right) |
-| 3 | `large_hole` | Large screw mounting holes |
-| 4 | `bracket_A` | Keyhole bracket type A |
-| 5 | `bracket_B` | Keyhole bracket type B |
-| 6 | `surface` | Main body / empty surface area |
-
-## Project Structure
-
-```
-.
-├── backend/                 # FastAPI backend server
-│   ├── app/
-│   │   ├── api/             # REST API endpoints (auth, projects, jobs, models)
-│   │   ├── models/          # SQLAlchemy ORM models
-│   │   ├── schemas/         # Pydantic request/response validation
-│   │   ├── services/        # Business logic layer
-│   │   ├── workers/         # Celery async task definitions
-│   │   ├── blender/         # Blender subprocess integration
-│   │   ├── middleware/      # Rate limiting, auth middleware
-│   │   └── main.py          # FastAPI application entry point
-│   ├── alembic/             # Database migrations
-│   ├── tests/               # Unit and integration tests
-│   ├── Dockerfile           # Backend container image
-│   └── requirements.txt     # Python dependencies
-│
-├── flutter_app/             # Cross-platform mobile app (iOS & Android)
-│   ├── lib/
-│   │   ├── screens/         # 19 screen components (camera, projects, training)
-│   │   ├── services/        # API client, YOLO inference engine
-│   │   ├── providers/       # Riverpod state management
-│   │   ├── models/          # Data models
-│   │   └── widgets/         # Reusable UI components
-│   └── pubspec.yaml         # Flutter dependencies
-│
-├── blender/                 # Blender rendering pipeline
-│   ├── eevee_desk_scene17_dualpass.py   # Main synthetic data generation script
-│   └── eevee_api_wrapper.py             # Environment-configurable render wrapper
-│
-├── training/                # ML training utilities
-│   ├── train_yolo_model.py              # YOLO training + CoreML/TFLite export
-│   ├── analyze_detection_results.py     # Dataset analysis and debugging
-│   ├── setup_training_env.py            # Environment validation and setup
-│   └── test_enhanced_script.py          # Blender script validation tests
-│
-├── scripts/                 # Platform helper scripts
-│   ├── docker/              # Docker lifecycle management (.bat)
-│   ├── podman/              # Podman lifecycle management (.bat)
-│   ├── setup/               # Environment setup (Blender, venv, Xcode)
-│   └── training/            # Training workflow automation (.bat)
-│
-├── docs/                    # Documentation
-│   ├── ARCHITECTURE.md      # System design and technical decisions
-│   ├── ROADMAP.md           # Product roadmap and milestones
-│   ├── DEPLOYMENT.md        # Production deployment guide
-│   ├── DOCKER_GUIDE.md      # Docker setup and usage
-│   ├── PODMAN_GUIDE.md      # Podman alternative setup
-│   ├── COMPLETE_WORKFLOW.md # End-to-end usage walkthrough
-│   ├── MODEL_RETRAINING_GUIDE.md  # Model retraining procedures
-│   └── ...                  # Additional guides
-│
-├── yolo_assembly_app/       # Legacy Flutter app (older version)
-├── yolo-ios-app/            # Native Swift iOS app
-├── docker-compose.yml       # Full stack container orchestration
-├── LICENSE                  # MIT License
-└── README.md
-```
-
-## Tech Stack
-
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| **API Server** | FastAPI 0.123+ | Async REST API with auto-generated docs |
-| **Database** | PostgreSQL 15 + SQLAlchemy 2.0 | Persistent storage with ORM |
-| **Task Queue** | Celery 5.6 + Redis 7 | Async rendering and training jobs |
-| **ML Framework** | Ultralytics YOLO + PyTorch 2.9 | Model training and inference |
-| **3D Rendering** | Blender 4.5 (EEVEE) | Synthetic data generation |
-| **Mobile App** | Flutter 3.16+ (Dart) | Cross-platform iOS/Android client |
-| **On-Device ML** | tflite_flutter / CoreML | Real-time mobile inference |
-| **Auth** | JWT (python-jose + bcrypt) | Token-based authentication |
-| **Containers** | Docker / Docker Compose | Development and production deployment |
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.8+
-- [Blender 4.5+](https://www.blender.org/download/) (for synthetic data generation)
-- Docker & Docker Compose (recommended for backend)
-- Flutter 3.16+ (for mobile app)
-- NVIDIA GPU with CUDA (recommended for training)
-
-### Quick Start with Docker
+On x86_64 the entire stack runs in containers, including STEP feature recognition.
 
 ```bash
-# Clone the repository
-git clone https://github.com/dawarazhar11/yolo-computer-vision-baseline.git
-cd yolo-computer-vision-baseline
+git clone https://github.com/dawarazhar11/VisionForge.git
+cd VisionForge
 
-# Start all services (API, PostgreSQL, Redis, Celery)
-docker compose up -d
+docker compose up -d --build
+docker compose exec backend alembic upgrade head     # first boot only
 
-# API available at http://localhost:8002
-# API docs at http://localhost:8002/docs
+# API docs: http://localhost:8002/docs
 ```
 
-### Manual Backend Setup
+Verify every dependency (including the TFLite export toolchain) is present:
 
 ```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate   # Windows
-
-# Install dependencies
-pip install -r backend/requirements.txt
-
-# Set up environment variables
-cp backend/.env.example backend/.env
-# Edit .env with your database credentials
-
-# Run database migrations
-cd backend && alembic upgrade head
-
-# Start the API server
-uvicorn app.main:app --host 0.0.0.0 --port 8002 --reload
+docker compose exec backend python -c "import tensorflow, tf_keras, onnx, onnx2tf, ai_edge_litert, cadquery, ultralytics; print('OK')"
 ```
 
-### Generate Synthetic Data
+### Native (macOS / Linux without Docker)
 
 ```bash
-# Using the Blender CLI (from project root)
-blender "your_scene.blend" --background --python blender/eevee_desk_scene17_dualpass.py
-
-# Or with custom configuration via environment variables
-BLENDER_NUM_RENDERS=200 BLENDER_RESOLUTION_X=1280 BLENDER_RESOLUTION_Y=720 \
-  blender "your_scene.blend" --background --python blender/eevee_api_wrapper.py
+scripts/setup/setup_backend.sh        # one-shot venv + full install + verification
+source backend/.venv/bin/activate
+alembic upgrade head
+uvicorn app.main:app --host 0.0.0.0 --port 8002
 ```
 
-### Train a Model
+See **[docs/SETUP.md](docs/SETUP.md)** for platform specifics (macOS ARM64 notes, why the export toolchain is pinned, GPU/MPS handling).
 
-```bash
-# Set up training environment
-python training/setup_training_env.py
-
-# Run the training pipeline (dataset setup + train + export)
-python training/train_yolo_model.py
-```
-
-### Flutter Mobile App
+### Mobile app
 
 ```bash
 cd flutter_app
-
-# Install dependencies
 flutter pub get
-
-# Run on connected device
-flutter run
+flutter run            # debug on a connected device/simulator
 ```
 
-## API Endpoints
+Set the backend URL on the login screen, sign in, then: **New Project → upload → render → train → download model → Detect**.
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/v1/auth/register` | Create user account |
-| `POST` | `/api/v1/auth/login` | Authenticate and get JWT tokens |
-| `POST` | `/api/v1/projects/upload` | Upload 3D assembly file |
-| `GET` | `/api/v1/projects` | List projects with pagination |
-| `POST` | `/api/v1/jobs` | Create rendering/training job |
-| `GET` | `/api/v1/jobs/{id}/stream` | SSE real-time job progress |
-| `GET` | `/api/v1/models` | List trained models |
-| `GET` | `/api/v1/models/{id}/download` | Download model for deployment |
-| `GET` | `/api/v1/monitoring/health` | System health check |
+## Architecture
 
-Full interactive API docs available at `/docs` (Swagger UI) when the server is running.
+**Monorepo layout**
 
-## Infrastructure
-
-```bash
-docker compose up -d
+```
+backend/        FastAPI API + Celery workers (auth, projects, jobs, models, monitoring)
+  app/api/        REST route handlers
+  app/workers/    Celery render & training tasks
+  app/blender/    Blender subprocess integration + class-map resolution
+  app/services/   STEP parsing (cadquery/XDE), preview generation, storage
+  app/training/   YOLO training + multi-format export
+blender/        Headless render scripts (generic .blend, STEP parts, STEP features)
+flutter_app/    Cross-platform mobile client (camera, projects, training, models)
+training/       Standalone training/analysis utilities
+scripts/        Setup, Docker/Podman lifecycle, and E2E validation
+docs/           Architecture, setup, and workflow guides
 ```
 
-| Service | Port | Purpose |
-|---------|------|---------|
-| `backend` | 8002 | FastAPI REST API |
-| `postgres` | 5432 | PostgreSQL database |
-| `redis` | 6379 | Cache & Celery message broker |
-| `celery_worker` | -- | Async task processing (render, train, export) |
-| `celery_beat` | -- | Scheduled job runner |
-| `portainer` | 9000 | Container management UI |
+**Services** (`docker compose`): `backend:8002`, `postgres`, `redis`, `celery_worker`, `celery_beat`.
+
+**Class resolution** (the heart of the dynamic-label system):
+
+| Source | Becomes classes |
+|--------|-----------------|
+| STEP assembly with named components | One class per CAD part name |
+| STEP single part | Recognized features (`hole`, `boss`, `chamfer`, `planar_face`) |
+| `.blend` / mesh files | One class per named mesh object |
+| Project override | A custom `class_map` set via the API/app |
+
+Class names flow from the render job → training → the served `labels.txt`, so the model, the API, and the app always agree on what each detection means.
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| API | FastAPI, Uvicorn |
+| Async jobs | Celery, Redis |
+| Database | PostgreSQL, SQLAlchemy, Alembic |
+| 3D / rendering | Blender (headless EEVEE) |
+| CAD parsing | cadquery / OpenCASCADE (XDE) |
+| ML | Ultralytics YOLO11, PyTorch |
+| Export | TensorFlow + ONNX toolchain → TFLite, CoreML |
+| Mobile | Flutter, tflite_flutter |
+| Auth | JWT (HS256), bcrypt |
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [Architecture](docs/ARCHITECTURE.md) | System design, technical decisions, data flow |
-| [Deployment](docs/DEPLOYMENT.md) | Production deployment guide |
-| [Docker Guide](docs/DOCKER_GUIDE.md) | Docker setup and container management |
-| [Podman Guide](docs/PODMAN_GUIDE.md) | Podman alternative to Docker |
-| [Complete Workflow](docs/COMPLETE_WORKFLOW.md) | End-to-end usage walkthrough |
-| [Model Retraining](docs/MODEL_RETRAINING_GUIDE.md) | How to retrain and update models |
-| [Flutter Implementation](docs/FLUTTER_IMPLEMENTATION.md) | Mobile app architecture |
-| [Roadmap](docs/ROADMAP.md) | Planned features and milestones |
-| [Platform Requirements](docs/PLATFORM_REQUIREMENTS.md) | System requirements by platform |
+| [Setup](docs/SETUP.md) | Install paths, dependency reproducibility, platform notes |
+| [Architecture](docs/ARCHITECTURE.md) | System design and data flow |
+| [Flutter Revamp](docs/FLUTTER_REVAMP.md) | Mobile app architecture |
+| [Deployment](docs/DEPLOYMENT.md) | Production deployment |
+| [Complete Workflow](docs/COMPLETE_WORKFLOW.md) | End-to-end walkthrough |
+| [Platform Requirements](docs/PLATFORM_REQUIREMENTS.md) | Requirements by platform |
 
-## Contributing
+## Project Status
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/your-feature`)
-3. Commit your changes (`git commit -m 'Add your feature'`)
-4. Push to the branch (`git push origin feature/your-feature`)
-5. Open a Pull Request
+The end-to-end pipeline — upload → render → train → export → on-device detection — is implemented and validated. Detection quality depends on the training data: a model is only as good as the renders it learns from (more images, realistic materials, and more epochs improve real-world accuracy).
 
 ## License
 
-This project is licensed under the MIT License -- see the [LICENSE](LICENSE) file for details.
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=dawarazhar11/yolo-computer-vision-baseline&type=Date)](https://star-history.com/#dawarazhar11/yolo-computer-vision-baseline&Date)
+MIT — see [LICENSE](LICENSE).
