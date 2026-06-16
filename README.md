@@ -144,7 +144,8 @@ Set the backend URL on the login screen, sign in, then: **New Project → upload
 ### Install on a phone (for end users)
 
 - **Android** — download the latest **`app-release.apk`** from the [Releases](../../releases) page and install it (allow "install from unknown sources" once). No account, no fee. APKs are built automatically by [GitHub Actions](.github/workflows/build-android.yml) on each release.
-- **iOS** — Apple has no free download-and-install path. Either build it yourself with a free Apple ID, or distribute via TestFlight (paid account). See **[docs/INSTALL.md](docs/INSTALL.md)** for both.
+- **iOS (developer testing)** — build on your Mac and run on your *own* iPhone with a **free Apple ID** (no paid account). Step-by-step + troubleshooting in **[docs/IOS_TESTING.md](docs/IOS_TESTING.md)**.
+- **iOS (other users)** — Apple has no free download-and-install path; distribute via TestFlight (paid account). See **[docs/INSTALL.md](docs/INSTALL.md)**.
 
 ## Architecture
 
@@ -196,6 +197,7 @@ Class names flow from the render job → training → the served `labels.txt`, s
 | Document | Description |
 |----------|-------------|
 | [Install (app)](docs/INSTALL.md) | Installing the mobile app — Android APK & iOS options |
+| [iOS testing](docs/IOS_TESTING.md) | Build on your Mac, run on your iPhone (free Apple ID) + troubleshooting |
 | [Setup (backend)](docs/SETUP.md) | Install paths, dependency reproducibility, platform notes |
 | [Architecture](docs/ARCHITECTURE.md) | System design and data flow |
 | [Flutter Revamp](docs/FLUTTER_REVAMP.md) | Mobile app architecture |

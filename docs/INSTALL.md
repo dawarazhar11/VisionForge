@@ -35,7 +35,8 @@ flutter run --release            # installs on your connected iPhone
 ```
 
 Free Apple IDs expire the build after 7 days — just re-run to refresh. Needs a
-Mac + Xcode, so this is for technical users.
+Mac + Xcode, so this is for technical users. **Full step-by-step with
+troubleshooting: [IOS_TESTING.md](IOS_TESTING.md).**
 
 ### B. TestFlight (requires paid Apple Developer Program — $99/yr)
 The only way to give non-technical users a simple install link on iOS. With a
