@@ -1,0 +1,66 @@
+name: Build Android APK
+
+# Ships an installable Android APK with no local Android SDK and no paid
+# account: GitHub's runners build it in the cloud. The APK is uploaded as a
+# build artifact, and attached to a GitHub Release when you publish one.
+#
+#   • Manual run:  Actions tab → "Build Android APK" → Run workflow
+#   • On release:  publish a Release (or push a v* tag) → APK attached to it
+#
+# Users then download the APK from the Releases page and install it (enabling
+# "install from unknown sources" once). No Google account required.
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write   # needed to attach the APK to the release
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter_app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Scaffold Android project if missing
+        run: |
+          if [ ! -d android ]; then
+            flutter create --platforms=android --org com.yolovision .
+          fi
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: visionforge-android
+          path: flutter_app/build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Attach APK to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: flutter_app/build/app/outputs/flutter-apk/app-release.apk
