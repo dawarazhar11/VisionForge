@@ -29,11 +29,14 @@ class DetectionScreenState extends State<DetectionScreen> {
   // YOLO service
   YoloService? _yoloService;
   String? _activeModelPath;
+  bool _streaming = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeCamera();
+    // Don't auto-start: IndexedStack builds this tab at launch even while it's
+    // offstage. The camera + inference start when the Detect tab is entered
+    // (AppShell calls resumeDetection), so they never run in the background.
   }
 
   /// Re-check the active model and (re)initialize. Called when the Detect
@@ -59,6 +62,7 @@ class DetectionScreenState extends State<DetectionScreen> {
     // Already running with the current model — nothing to do.
     if (_isInitialized && path == _activeModelPath) return;
 
+    _streaming = false;
     await _cameraController?.dispose();
     _cameraController = null;
     _yoloService?.dispose();
@@ -111,13 +115,7 @@ class DetectionScreenState extends State<DetectionScreen> {
 
       await _cameraController!.initialize();
 
-      // Start image stream for detection
-      _cameraController!.startImageStream((CameraImage image) {
-        if (!_isDetecting) {
-          _isDetecting = true;
-          _runDetection(image);
-        }
-      });
+      _startStream();
 
       setState(() {
         _isInitialized = true;
@@ -126,6 +124,38 @@ class DetectionScreenState extends State<DetectionScreen> {
       setState(() {
         _error = 'Camera initialization failed: $e';
       });
+    }
+  }
+
+  void _startStream() {
+    if (_streaming || _cameraController == null) return;
+    _cameraController!.startImageStream((CameraImage image) {
+      if (!_isDetecting) {
+        _isDetecting = true;
+        _runDetection(image);
+      }
+    });
+    _streaming = true;
+  }
+
+  /// Stop the camera stream + inference. Called when the Detect tab is not
+  /// visible so the camera + per-frame inference don't keep blocking the UI
+  /// thread app-wide (the nav shell keeps this screen alive).
+  Future<void> pauseDetection() async {
+    if (!_streaming || _cameraController == null) return;
+    try {
+      await _cameraController!.stopImageStream();
+    } catch (_) {}
+    _streaming = false;
+  }
+
+  /// Resume when returning to the Detect tab — restart the stream if the
+  /// camera/model are still live, otherwise do a full (re)load.
+  Future<void> resumeDetection() async {
+    if (_isInitialized && _cameraController != null && _yoloService != null) {
+      _startStream();
+    } else {
+      await reloadActiveModel();
     }
   }
 
