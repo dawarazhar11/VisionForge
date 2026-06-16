@@ -71,6 +71,21 @@ Because the geometry is known, the labels are free: Blender renders the part fro
 4. **Export** — the trained model is converted to TFLite/CoreML and bundled with its labels.
 5. **Deploy** — download the model into the Flutter app, set it active, and detect through the camera.
 
+## See It In Action
+
+VisionForge generates **perfectly labeled training images automatically** — no human draws a single box. Below are real preview frames straight from a render job, with the auto-generated YOLO labels drawn on. The class names come directly from the source design file.
+
+<div align="center">
+
+| STEP assembly → per-part labels | Blender scene → per-object labels |
+|:---:|:---:|
+| ![Auto-labeled STEP assembly](docs/images/auto-labeled-step-parts.png) | ![Auto-labeled Blender scene](docs/images/auto-labeled-blend.png) |
+| Component names (`base_plate`, `rotor`, `bolt_m4`) become detection classes | Each named mesh object becomes a class |
+
+</div>
+
+> Every render job produces a folder of these previews so you can verify the dataset before training — the labels you see here are exactly what the model learns from.
+
 ## Quick Start
 
 ### Docker (recommended — Linux / Windows x86_64)
