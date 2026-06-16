@@ -58,20 +58,37 @@ Because the geometry is known, the labels are free: Blender renders the part fro
 
 ## How It Works
 
+The pipeline above looks simple; here's what actually happens at each stage, and the artifacts it produces.
+
+### 1. Upload → a project
+You upload a 3D file (`.step`, `.stp`, `.blend`, `.obj`, `.stl`, `.fbx`) via the app or `POST /api/v1/projects/upload`. The API stores it and creates a project record. Everything downstream is an async **job** tracked in PostgreSQL, so the client can poll `GET /jobs/{id}` or stream progress over SSE.
+
+### 2. Render → labeled dataset (the part with no manual work)
+A Celery worker drives **headless Blender (EEVEE)**. The class map is resolved *first*, from the file itself:
+
+- **STEP assembly** → OpenCASCADE/XDE reads the component tree; each named part is a class.
+- **STEP single part** → feature recognition extracts `hole`, `boss`, `chamfer`, `planar_face`.
+- **`.blend` / meshes** → one class per named mesh object.
+- **Override** → a project `class_map` you set via the API/app wins over all of the above.
+
+Blender then renders N images from **randomized camera angles and lighting**, projecting each object's geometry to screen space to write a **YOLO label file** (`class x y w h`) per image — no human annotation. It emits:
+
 ```
-┌──────────────┐    ┌───────────────┐    ┌──────────────┐    ┌──────────────┐    ┌─────────────┐
-│  Upload      │──> │  Auto-render  │──> │  Train YOLO  │──> │  Export      │──> │  Detect     │
-│  design file │    │  + auto-label │    │  model       │    │  TFLite/     │    │  on-device  │
-│  (STEP/.blend)│   │  (Blender)    │    │ (Ultralytics)│    │  CoreML      │    │  (Flutter)  │
-└──────────────┘    └───────────────┘    └──────────────┘    └──────────────┘    └─────────────┘
-        classes resolved from the design file ───────────────────────────> served as labels.txt
+datasets/<project>/render_<job>/
+├── render_0000.png … render_NNNN.png     # images
+├── render_0000.txt … render_NNNN.txt     # YOLO labels
+├── class_map.json                        # object → class index + names + source
+└── previews/                             # same images with boxes drawn on, for review
 ```
 
-1. **Upload** a 3D file through the app or API.
-2. **Render** — Blender (headless EEVEE) generates synthetic images with randomized camera/lighting and writes YOLO labels. Classes are resolved from the file (CAD part names, STEP features, or mesh names); annotated previews are generated for review.
-3. **Train** — a YOLO model trains on the dataset, carrying those class names end-to-end.
-4. **Export** — the trained model is converted to TFLite/CoreML and bundled with its labels.
-5. **Deploy** — download the model into the Flutter app, set it active, and detect through the camera.
+### 3. Train → a model that knows your classes
+The train job locates the dataset, splits it train/val, writes `data.yaml`, and runs **Ultralytics YOLO**. Class names flow through from the render job (config override → render `class_names` → STEP features), so the model's class indices always map back to your real part names. Device is auto-selected **CUDA → MPS → CPU**, and the model task is matched to the label format (detection boxes vs. segmentation).
+
+### 4. Export → mobile-ready model + labels
+The trained `.pt` is converted through **PyTorch → ONNX → TensorFlow → TFLite** (and CoreML for iOS), and served alongside a matching **`labels.txt`**. The full export toolchain is pinned in the image, so this is reproducible and offline-safe.
+
+### 5. Detect → live, on-device
+The Flutter app downloads the TFLite model + `labels.txt`, sets it active, and runs inference on the camera feed. Because `labels.txt` rode along from step 2, the boxes on screen are named with **your** classes — the same names you started with in the design file.
 
 ## See It In Action
 
@@ -124,6 +141,11 @@ flutter run            # debug on a connected device/simulator
 
 Set the backend URL on the login screen, sign in, then: **New Project → upload → render → train → download model → Detect**.
 
+### Install on a phone (for end users)
+
+- **Android** — download the latest **`app-release.apk`** from the [Releases](../../releases) page and install it (allow "install from unknown sources" once). No account, no fee. APKs are built automatically by [GitHub Actions](.github/workflows/build-android.yml) on each release.
+- **iOS** — Apple has no free download-and-install path. Either build it yourself with a free Apple ID, or distribute via TestFlight (paid account). See **[docs/INSTALL.md](docs/INSTALL.md)** for both.
+
 ## Architecture
 
 **Monorepo layout**
@@ -173,7 +195,8 @@ Class names flow from the render job → training → the served `labels.txt`, s
 
 | Document | Description |
 |----------|-------------|
-| [Setup](docs/SETUP.md) | Install paths, dependency reproducibility, platform notes |
+| [Install (app)](docs/INSTALL.md) | Installing the mobile app — Android APK & iOS options |
+| [Setup (backend)](docs/SETUP.md) | Install paths, dependency reproducibility, platform notes |
 | [Architecture](docs/ARCHITECTURE.md) | System design and data flow |
 | [Flutter Revamp](docs/FLUTTER_REVAMP.md) | Mobile app architecture |
 | [Deployment](docs/DEPLOYMENT.md) | Production deployment |
