@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../utils/api_config.dart';
-import 'home_screen.dart';
+import 'app_shell.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -21,10 +22,32 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoginMode = true;
   bool _showBackendField = false;
 
+  static const _kEmail = 'saved_email';
+  static const _kPassword = 'saved_password';
+
   @override
   void initState() {
     super.initState();
     _backendUrlController.text = ApiConfig.baseUrl;
+    _loadSavedCredentials();
+  }
+
+  Future<void> _loadSavedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    final email = prefs.getString(_kEmail);
+    final password = prefs.getString(_kPassword);
+    if (mounted && (email != null || password != null)) {
+      setState(() {
+        if (email != null) _emailController.text = email;
+        if (password != null) _passwordController.text = password;
+      });
+    }
+  }
+
+  Future<void> _saveCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kEmail, _emailController.text.trim());
+    await prefs.setString(_kPassword, _passwordController.text);
   }
 
   @override
@@ -68,10 +91,13 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     }
 
-    if (success && mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-      );
+    if (success) {
+      await _saveCredentials();
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const AppShell()),
+        );
+      }
     }
   }
 

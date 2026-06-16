@@ -85,8 +85,9 @@ class YoloService {
   // False when output shape is [1, 8400, 5+N] (YOLOv5 row-major)
   bool _isYolov8Format = false;
 
-  // Model configuration
-  static const int inputSize = 640;
+  // Model configuration. inputSize is read from the model at load time
+  // (smaller models run much faster); 640 is just the fallback.
+  int inputSize = 640;
   static const double confidenceThreshold = 0.5;
   static const double iouThreshold = 0.45;
 
@@ -99,8 +100,16 @@ class YoloService {
     List<String>? labels,
   }) async {
     try {
-      // Load model from file (not a bundled asset)
-      _interpreter = await Interpreter.fromFile(File(modelPath));
+      // Multi-threaded CPU inference — single-thread was ~1 FPS.
+      final options = InterpreterOptions()
+        ..threads = Platform.numberOfProcessors.clamp(2, 4);
+      _interpreter = await Interpreter.fromFile(File(modelPath), options: options);
+
+      // Use the model's actual input size (e.g. 320) instead of assuming 640.
+      final inputShape = _interpreter!.getInputTensor(0).shape;
+      if (inputShape.length == 4 && inputShape[1] > 0) {
+        inputSize = inputShape[1];
+      }
 
       // Detect output format from tensor shape
       final outputShape = _interpreter!.getOutputTensor(0).shape;
