@@ -2,7 +2,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// API configuration for backend communication
 class ApiConfig {
-  static const String defaultBaseUrl = 'http://192.168.0.207:8002';
+  // NetBird overlay IP of the dev backend — stable across Wi-Fi changes,
+  // unlike a LAN IP. Override per-device via the login screen's Backend URL.
+  static const String defaultBaseUrl = 'http://100.108.14.158:8002';
   static const String backendUrlPrefKey = 'backendUrlOverride';
 
   static String? _overrideBaseUrl;
