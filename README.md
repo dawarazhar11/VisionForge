@@ -19,11 +19,29 @@ Upload a CAD assembly or Blender scene → VisionForge auto-generates labeled sy
 
 ---
 
-## Overview
+## The Problem
 
-Training an object detector normally means collecting and hand-labeling thousands of photos. VisionForge removes that step entirely: it renders **automatically labeled** training images from a 3D model you already have, trains a detector on them, and packages the result for on-device inference.
+Computer vision could verify assemblies, count parts, and guide field repairs — but for **custom industrial parts, it almost never gets built.** Four walls stand in the way:
 
-The key idea is that **labels come from the design file itself.** The names of the parts in your CAD assembly or Blender scene become the detection classes — nothing is hardcoded. Name a part `gear_housing` and the model learns to detect `gear_housing`.
+- **Manual labeling is the bottleneck.** A usable detector needs thousands of hand-annotated photos. Drawing boxes around screws and brackets is slow, expensive, and error-prone — and it's wasted effort when a precise 3D model of the part already exists.
+- **There's no data for niche parts.** You can't scrape or buy a dataset for *your* bracket, *your* rotor, *your* assembly. Public datasets stop at cats and cars.
+- **It takes a CV team.** Going from a 3D model to a model running on a phone normally means ML engineers, a training pipeline, export tooling, and mobile integration — out of reach for most teams that actually have the parts.
+- **Inspection stays manual.** On the floor and in the field, "is the right part there / is a screw missing?" is still answered by eye.
+
+## The Solution
+
+VisionForge turns the asset you already have — **the CAD or 3D model** — directly into a deployed, real-time detector, with **no human labeling and no ML expertise required.**
+
+Because the geometry is known, the labels are free: Blender renders the part from thousands of randomized viewpoints and **writes perfect bounding boxes automatically.** The part names in your design file *become* the detection classes — nothing is hardcoded. Name a part `gear_housing`, and the model learns to detect `gear_housing`. Upload a file, and minutes later you have a model running live on a phone camera.
+
+> **Upload a design file → get a detector on your phone.** That's the whole loop.
+
+### Who it's for
+
+- **Manufacturing & assembly QA** — verify the right components are present, count parts, catch a missing screw or bracket.
+- **Field service & inspection** — point a phone at equipment to identify parts and guide maintenance.
+- **Engineers & makers with CAD** — anyone holding 3D models who wants detection without standing up an ML team.
+- **As a platform** — an end-to-end reference for CAD-to-deployed-detector automation.
 
 ### Capabilities
 
