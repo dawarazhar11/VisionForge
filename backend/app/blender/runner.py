@@ -197,13 +197,27 @@ class BlenderRunner:
             "VFORGE_EEVEE_SAMPLES": str(config.eevee_samples),
         })
 
+        # Per-part isolation passes (base part fixed, others hidden, each
+        # target rendered one at a time) — on by default for robust per-part
+        # examples. Configurable via the render job config.
+        env["VFORGE_ISOLATION"] = "0" if getattr(config, "isolation", True) is False else "1"
+        base_part = getattr(config, "base_part", None)
+        if base_part:
+            env["VFORGE_BASE_PART"] = str(base_part)
+        full_frac = getattr(config, "isolation_full_frac", None)
+        if full_frac is not None:
+            env["VFORGE_ISOLATION_FULL_FRAC"] = str(full_frac)
+
         cmd = [
             self.blender_path,
             "--background",
             "--python", str(script_path),
         ]
 
-        logger.info(f"render_step_parts: manifest={parts_json_path}  out={output_dir}")
+        logger.info(
+            f"render_step_parts: manifest={parts_json_path}  out={output_dir}  "
+            f"isolation={env['VFORGE_ISOLATION']}"
+        )
         result = self._execute_blender(cmd, output_dir, config.num_renders, env=env)
         return self._attach_class_map_from_output(result)
 
