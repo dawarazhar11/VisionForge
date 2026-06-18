@@ -91,20 +91,20 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     }
   }
 
-  Future<void> _startJob(String type) async {
+  // Adjustable job settings (defaults tuned for a real run, not a quick test).
+  int _numRenders = 150;
+  int _resolution = 640;
+  int _samples = 32;
+  int _epochs = 50;
+  int _imgsz = 320;
+
+  Future<void> _startJob(String type, Map<String, dynamic> config) async {
     if (_token == null) return;
     try {
       await _api.createJob(
         projectId: widget.project.id,
         jobType: type,
-        config: type == 'render'
-            ? {
-                'num_renders': 40,
-                'resolution_x': 640,
-                'resolution_y': 640,
-                'eevee_samples': 24
-              }
-            : {'epochs': 30, 'imgsz': 320, 'device': 'cpu'},
+        config: config,
       );
       _refresh(silent: true);
       if (mounted) {
@@ -118,6 +118,151 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
             .showSnackBar(SnackBar(content: Text('Failed: $e')));
       }
     }
+  }
+
+  void _showRenderSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.fromLTRB(AppTheme.s4, 0, AppTheme.s4,
+              MediaQuery.of(ctx).viewInsets.bottom + AppTheme.s5),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Render settings',
+                  style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: AppTheme.s4),
+              _sliderTile(ctx, 'Training images', _numRenders, 20, 500, 20,
+                  (v) => setSheet(() => _numRenders = v)),
+              _segTile(ctx, 'Resolution', _resolution, const [320, 640, 960],
+                  (v) => setSheet(() => _resolution = v)),
+              _sliderTile(ctx, 'EEVEE samples', _samples, 8, 96, 8,
+                  (v) => setSheet(() => _samples = v)),
+              const SizedBox(height: AppTheme.s2),
+              Text(
+                'More images + samples = better model, slower render.',
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+              const SizedBox(height: AppTheme.s4),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.movie_filter),
+                  label: Text('Start render · $_numRenders images'),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _startJob('render', {
+                      'num_renders': _numRenders,
+                      'resolution_x': _resolution,
+                      'resolution_y': _resolution,
+                      'eevee_samples': _samples,
+                    });
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showTrainSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.fromLTRB(AppTheme.s4, 0, AppTheme.s4,
+              MediaQuery.of(ctx).viewInsets.bottom + AppTheme.s5),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Training settings',
+                  style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: AppTheme.s4),
+              _sliderTile(ctx, 'Epochs', _epochs, 10, 200, 10,
+                  (v) => setSheet(() => _epochs = v)),
+              _segTile(ctx, 'Image size', _imgsz, const [320, 640],
+                  (v) => setSheet(() => _imgsz = v)),
+              const SizedBox(height: AppTheme.s2),
+              Text(
+                'More epochs = better accuracy, longer training. '
+                'Larger image size is more accurate but slower on-device.',
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+              const SizedBox(height: AppTheme.s4),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.model_training),
+                  label: Text('Start training · $_epochs epochs'),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _startJob('train',
+                        {'epochs': _epochs, 'imgsz': _imgsz, 'device': 'cpu'});
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _sliderTile(BuildContext ctx, String label, int value, int min,
+      int max, int step, ValueChanged<int> onChanged) {
+    final divisions = ((max - min) / step).round();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(label)),
+            Text('$value',
+                style: Theme.of(ctx)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w600)),
+          ],
+        ),
+        Slider(
+          value: value.toDouble(),
+          min: min.toDouble(),
+          max: max.toDouble(),
+          divisions: divisions,
+          label: '$value',
+          onChanged: (v) => onChanged((v / step).round() * step),
+        ),
+      ],
+    );
+  }
+
+  Widget _segTile(BuildContext ctx, String label, int value, List<int> options,
+      ValueChanged<int> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppTheme.s2),
+      child: Row(
+        children: [
+          Expanded(child: Text(label)),
+          SegmentedButton<int>(
+            segments: options
+                .map((o) =>
+                    ButtonSegment(value: o, label: Text('$o')))
+                .toList(),
+            selected: {value},
+            onSelectionChanged: (s) => onChanged(s.first),
+          ),
+        ],
+      ),
+    );
   }
 
   bool get _hasSuccessfulRender =>
@@ -172,7 +317,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       children: [
         Expanded(
           child: FilledButton.icon(
-            onPressed: () => _startJob('render'),
+            onPressed: _showRenderSheet,
             icon: const Icon(Icons.movie_filter),
             label: const Text('Render'),
           ),
@@ -180,7 +325,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
         const SizedBox(width: AppTheme.s3),
         Expanded(
           child: FilledButton.tonalIcon(
-            onPressed: _hasSuccessfulRender ? () => _startJob('train') : null,
+            onPressed: _hasSuccessfulRender ? _showTrainSheet : null,
             icon: const Icon(Icons.model_training),
             label: const Text('Train'),
           ),
