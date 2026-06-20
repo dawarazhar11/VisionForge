@@ -21,6 +21,22 @@ Upload a CAD assembly or Blender scene → VisionForge auto-generates labeled sy
 
 ---
 
+## In Plain Terms
+
+You point a phone or tablet camera at a part or assembly, and the app tells you
+which components it sees — so you can check that the right parts are present and
+correctly placed.
+
+The clever bit: normally, teaching a camera to recognise *your* specific parts
+means photographing and hand-marking thousands of images first — months of work
+and a specialist team. **VisionForge skips all of that by learning straight from
+the 3D CAD models you already have.** You give it the same design files the parts
+were made from; it teaches itself what each part looks like from every angle, and
+runs on a phone.
+
+> In plain terms: it's like training a new inspector by handing them the
+> drawings — except it learns in an afternoon and never gets tired.
+
 ## The Problem
 
 Computer vision could verify assemblies, count parts, and guide field repairs — but for **custom industrial parts, it almost never gets built.** Four walls stand in the way:
@@ -38,12 +54,23 @@ Because the geometry is known, the labels are free: Blender renders the part fro
 
 > **Upload a design file → get a detector on your phone.** That's the whole loop.
 
-### Who it's for
+### Where it earns its keep
 
-- **Manufacturing & assembly QA** — verify the right components are present, count parts, catch a missing screw or bracket.
+**Quality control & assembly verification** — the clearest fit:
+
+- **End-of-line completeness check** — confirm every part and fastener is present before a unit ships.
+- **Catch the wrong variant** — right-hand vs left-hand bracket, wrong-length bolt, missing washer.
+- **Incoming inspection** — verify a delivered part is actually what the PO says.
+- **Operator guidance** — help newer staff: "this is the part, here's where it goes."
+
+It checks every unit the same way — no inspector fatigue, no end-of-shift misses — turning routine visual checks that today cause rework, scrap, and warranty claims into a consistent automatic step.
+
+**Also useful for:**
 - **Field service & inspection** — point a phone at equipment to identify parts and guide maintenance.
 - **Engineers & makers with CAD** — anyone holding 3D models who wants detection without standing up an ML team.
 - **As a platform** — an end-to-end reference for CAD-to-deployed-detector automation.
+
+> **Honest scope:** this is best run as a pilot on one well-defined assembly to start — distinct, non-shiny parts are easiest. It complements a skilled inspector (catching the routine misses consistently), it doesn't replace their judgement.
 
 ### Capabilities
 
