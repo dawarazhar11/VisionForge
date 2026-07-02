@@ -14,6 +14,12 @@ reports/
 blender_venv/
 blender_packages/
 backend_venv/
+.venv-test/
+backend/.venv-test/
+.coverage
+*.npy
+yolo11n.pt
+backend/yolo11n.pt
 __pycache__/
 *.pyc
 *.pyo
@@ -27,6 +33,10 @@ ENV/
 # Backend
 backend/.env
 backend/storage/
+
+# Local editor / harness config
+.claude/settings.local.json
+.claude/launch.json
 backend/alembic/versions/__pycache__/
 
 # Flutter
